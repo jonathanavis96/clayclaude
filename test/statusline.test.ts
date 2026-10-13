@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -156,6 +156,19 @@ describe('status line bridge, as Claude Code runs it', () => {
     const r = runLine(bridgeCommand('cat; printf "\\n\\n"'), d, statusInput() + '\n\n');
     expect(r.out.toString('utf8')).toBe(statusInput() + '\n\n\n\n');
   });
+  it('a recorder that hangs gives up after 2 seconds, so the status line is never held up for long', async () => {
+    const d = account();
+    const t = Date.now();
+    // stdin left open: the recorder blocks reading it, as it would on a hung disk
+    const child = spawn('python3', [join(d, 'clayclaude', 'hook.py'), 'statusline'], { stdio: ['pipe', 'ignore', 'ignore'] });
+    const code = await new Promise<number | null>((res) => child.on('exit', (c, sig) => res(c ?? (sig ? -1 : null))));
+    const took = Date.now() - t;
+    child.stdin.destroy();
+    expect(code).not.toBe(0);
+    expect(took).toBeGreaterThan(1500);
+    expect(took).toBeLessThan(4000);
+  }, 10_000);
+
   it('rewrites the record only when the values change', () => {
     const d = account();
     const path = join(d, 'clayclaude', 'context', 'sess-1.json');
