@@ -43,6 +43,20 @@ describe('Collector', () => {
     expect(s[0].live).toBe(true);
   });
 
+  it('a session seen past 200k keeps the 1M window across polls, and is forgotten once it is gone', async () => {
+    const turn = (tokens: number) => JSON.stringify({ type: 'assistant', timestamp: new Date(NOW - 600_000).toISOString(),
+      message: { model: 'claude-opus-5-5', content: [{ type: 'text', text: 'x' }], usage: { input_tokens: 0, cache_read_input_tokens: tokens, cache_creation_input_tokens: 0 } } });
+    let regs: object[] = [{ ...reg('a', true), transcript: [turn(266_000)] }];
+    const c = new Collector(cfg, { now: () => NOW, probe: async (h) => h.id === 'local' ? snap('/c/me', regs) : snap('~/.claude-w', []) });
+    expect((await c.pollOnce())[0].contextPct).toBe(27);
+    regs = [{ ...reg('a', true), transcript: [turn(198_000)] }];
+    expect((await c.pollOnce())[0].contextPct).toBe(20);
+    regs = [];
+    await c.pollOnce();
+    regs = [{ ...reg('a', true), transcript: [turn(198_000)] }];
+    expect((await c.pollOnce())[0].contextPct).toBe(99);
+  });
+
   it('emits update only on change', async () => {
     const c = new Collector(cfg, { now: () => NOW, probe: async (h) => snap(h.id === 'local' ? '/c/me' : '~/.claude-w', []) });
     let n = 0; c.on('update', () => n++);

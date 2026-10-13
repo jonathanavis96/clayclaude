@@ -62,6 +62,26 @@ describe('action service', () => {
     await svc.summary('k');
     expect(reqs).toHaveLength(1); // cached for 3 s
   });
+  it('a resumed session\'s summary comes from the registry of the process the board shows, not the first file by name', async () => {
+    // Claude Code writes a new <pid>.json each time a session is resumed; the dead ones stay, and sort first by name.
+    const t = (text: string) => [JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text }] } })];
+    const regs = [
+      { file: '15018.json', mtimeMs: 1000, live: false, data: { pid: 15018, sessionId: 'sid', startedAt: 10 }, transcript: [] },
+      { file: '2914547.json', mtimeMs: 3000, live: true, data: { pid: 2914547, sessionId: 'sid', startedAt: 30 }, transcript: t('live') },
+      { file: '46416.json', mtimeMs: 2000, live: false, data: { pid: 46416, sessionId: 'sid', startedAt: 20 }, transcript: t('old') },
+    ];
+    const probe = async () => ({ ok: true, dirs: [{ registries: regs }] });
+    const r: any = await make(S({ pid: 2914547 }), probe).svc.summary('k');
+    expect(r.summary).toMatchObject({ lastAssistantText: 'live', startedAt: 30 });
+    // No pid match (the board's row is older than the probe): the live one, then one with a transcript, then the newest.
+    const noLive = regs.map((g) => ({ ...g, live: false }));
+    const r2: any = await make(S({ pid: 7 }), async () => ({ ok: true, dirs: [{ registries: [noLive[0], { ...noLive[2], live: true }, noLive[1]] }] })).svc.summary('k');
+    expect(r2.summary).toMatchObject({ lastAssistantText: 'old', startedAt: 20 });
+    const r3: any = await make(S({ pid: 7 }), async () => ({ ok: true, dirs: [{ registries: noLive }] })).svc.summary('k');
+    expect(r3.summary).toMatchObject({ lastAssistantText: 'live', startedAt: 30 });
+    const r4: any = await make(S({ pid: 7 }), async () => ({ ok: true, dirs: [{ registries: noLive.map((g) => ({ ...g, transcript: [] })) }] })).svc.summary('k');
+    expect(r4.summary).toMatchObject({ startedAt: 30 });
+  });
   it('the public config never contains the LAN token or credential details', () => {
     const json = JSON.stringify(publicConfig(cfg));
     expect(json).not.toContain('ttttt');

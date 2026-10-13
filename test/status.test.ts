@@ -141,6 +141,16 @@ describe('deriveSession: re-check findings', () => {
       usage: { input_tokens: 0, cache_read_input_tokens: 70_000, cache_creation_input_tokens: 0 } } });
     expect(deriveSession(input({ transcript: [boundary, after] }), NOW)!.contextPct).toBe(7);
   });
+  it('a session once seen past its configured window stays on the 1M window after that has left the tail', () => {
+    const turn = (tokens: number) => J({ type: 'assistant', timestamp: iso(600_000), message: { model: 'claude-opus-5-5', content: [{ type: 'text', text: 'x' }],
+      usage: { input_tokens: 0, cache_read_input_tokens: tokens, cache_creation_input_tokens: 0 } } });
+    const wide = new Set<string>();
+    expect(deriveSession(input({ transcript: [turn(266_000)], wide }), NOW)!.contextPct).toBe(27);
+    expect(wide.has('local:me:s')).toBe(true);
+    expect(deriveSession(input({ transcript: [turn(198_000)], wide }), NOW)!.contextPct).toBe(20);
+    // Never seen past it: still the configured window.
+    expect(deriveSession(input({ transcript: [turn(198_000)], wide: new Set() }), NOW)!.contextPct).toBe(99);
+  });
   it('the cache timer ignores a synthetic API error entry (no request reached the cache)', () => {
     const err = J({ type: 'assistant', timestamp: iso(60_000), isApiErrorMessage: true, message: { model: '<synthetic>', content: [{ type: 'text', text: 'API Error: 529 overloaded' }] } });
     expect(deriveSession(input({ transcript: [asst(600_000), err] }), NOW)!.cacheExpiresAt).toBe(NOW - 600_000 + 3600_000);

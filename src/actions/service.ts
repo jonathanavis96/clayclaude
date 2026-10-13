@@ -1,5 +1,5 @@
 import type { Config } from '../config.js';
-import type { ProbeSnapshot, Session } from '../types.js';
+import type { ProbeSnapshot, RawRegistry, Session } from '../types.js';
 import type { DismissedStore } from '../dismissed.js';
 import { cleanNickname, renameIn, type NicknameStore } from '../nicknames.js';
 import { buildSummary } from '../core/summary.js';
@@ -36,6 +36,17 @@ export interface ServiceDeps {
 
 const toFail = (e: unknown): Fail =>
   e instanceof ActionError ? fail(e.code as never, e.message) : fail('failed', e instanceof Error ? e.message.split('\n')[0] : 'failed');
+
+/**
+ * The registry of the process the board shows for a session. A resumed session leaves one `<pid>.json` per process,
+ * all with its id, and the probe lists them by file name: take the one with the session's pid, else a live one, else
+ * one with a transcript, else the newest.
+ */
+export function registryOf(regs: RawRegistry[], pid: number): RawRegistry | undefined {
+  const rank = (r: RawRegistry) => [r.data?.pid === pid ? 1 : 0, r.live ? 1 : 0, r.transcript?.length ? 1 : 0, r.mtimeMs ?? 0];
+  const better = (a: RawRegistry, b: RawRegistry) => { const x = rank(a), y = rank(b); const i = x.findIndex((v, k) => v !== y[k]); return i >= 0 && x[i] > y[i]; };
+  return regs.reduce<RawRegistry | undefined>((best, r) => (!best || better(r, best) ? r : best), undefined);
+}
 
 export function createActionService(d: ServiceDeps): ActionApi & { publicConfig(): unknown } {
   const exec = d.exec ?? makeExec();
@@ -148,7 +159,7 @@ export function createActionService(d: ServiceDeps): ActionApi & { publicConfig(
       if (!s.hostOnline) return fail('host_offline', `${host.id} is offline`);
       try {
         const snap = (await d.probe(host, { mode: 'snapshot', dirs: [account.configDir], only: s.sessionId, tailBytes: 1_048_576, maxLines: 400, clip: 400 })) as ProbeSnapshot;
-        const reg = snap.dirs[0]?.registries[0];
+        const reg = registryOf(snap.dirs[0]?.registries ?? [], s.pid);
         const value = buildSummary(reg?.transcript ?? [], typeof reg?.data?.startedAt === 'number' ? (reg.data.startedAt as number) : undefined);
         for (const [k, v] of summaries) if (now() - v.at >= 3000) summaries.delete(k); // stale entries only ever miss
         summaries.set(id, { at: now(), value });

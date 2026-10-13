@@ -64,6 +64,8 @@ clayclaude watches every Claude Code session on this machine and on any machine 
 | **At the usage limit** (X3) | The account has hit its usage limit | Turns grey and glum |
 | **Compacting** (X4) | Claude is compacting the conversation | Squashed under a press |
 
+Claude Code's transcripts do not record a 1M context window, so set `contextWindows` in the config for models whose sessions run on 1M (see [`example.config.yaml`](example.config.yaml)). Otherwise the board assumes 200k until it sees a session go past it.
+
 L1, a waving character in each account's colour, marks the accounts in **+ New**.
 
 ## What you can do from the tablet

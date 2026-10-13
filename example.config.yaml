@@ -11,6 +11,7 @@ stoppedRetention: 3h        # how long a stopped session stays on the board (90s
 contextWindows:             # context window per model-name prefix, for the context % on each card
   default: 200000           # used when no prefix matches; a model ending in [1m] is always 1,000,000
   # claude-sonnet-4: 200000
+  # claude-opus-5-5: 1000000  # transcripts do not record a 1M window: set it for models whose sessions run on 1M
 
 # Machines whose Claude Code sessions appear on the board. "local" is the machine running the daemon.
 hosts:
