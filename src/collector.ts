@@ -139,7 +139,8 @@ export class Collector extends EventEmitter {
             if (hit) { reg = { ...raw, transcript: hit.lines }; cache.set(sid, hit); }
           }
           const s = deriveSession({ host: host.id, account: account.id, reg, events, usageExhausted: this.exhausted(account.id),
-            cacheTtlMinutes: this.cfg.cacheTtlMinutes, contextWindows: this.cfg.contextWindows, hostOnline: true, lastSeen: now, wide: this.wide }, hostNow);
+            cacheTtlMinutes: this.cfg.cacheTtlMinutes, contextWindows: this.cfg.contextWindows, hostOnline: true, lastSeen: now, wide: this.wide,
+            ...(sid && dir.contexts && typeof dir.contexts === 'object' && Object.hasOwn(dir.contexts, sid) ? { context: dir.contexts[sid] } : {}) }, hostNow);
           if (!s) continue;
           const f = files.get(s.key);
           if (f) f.files.push(raw.file); else files.set(s.key, { configDir: dir.configDir, files: [raw.file] });
@@ -159,8 +160,11 @@ export class Collector extends EventEmitter {
     } catch (e) {
       const why = e instanceof ProbeError && e.kind === 'unsupported' ? 'cannot be watched' : 'unreachable';
       if (!b) this.log(`clayclaude: host ${host.id} ${why}: ${e instanceof Error ? e.message : String(e)}`);
-      this.byHost.set(host.id, (this.byHost.get(host.id) ?? []).map((s) => ({ ...s, hostOnline: false })));
       const failures = (b?.failures ?? 0) + 1;
+      // One timeout on a slow link is not an outage (a cold poll after a restart reads every transcript): a host goes
+      // grey on its second failure in a row, or at once when ssh itself fails.
+      const slowOnce = e instanceof ProbeError && e.kind === 'timeout' && failures < 2;
+      if (!slowOnce) this.byHost.set(host.id, (this.byHost.get(host.id) ?? []).map((s) => ({ ...s, hostOnline: false })));
       const delay = Math.min(this.cfg.pollMs * 2 ** (failures - 1), MAX_BACKOFF_MS);
       this.backoff.set(host.id, { failures, nextAttemptAt: this.now() + delay }); // from when the failure was seen, so a slow ssh timeout does not eat the delay
     } finally {

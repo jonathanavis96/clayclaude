@@ -9,6 +9,7 @@ import { parseConfig } from '../src/config.js';
 import { makeExec } from '../src/actions/exec.js';
 import { configErrorText, runSetup } from '../src/setup/wizard.js';
 import { planHooks } from '../src/hooks/install.js';
+import { parseBridge } from '../src/hooks/statusline.js';
 import { PROBE } from './helpers/probe.js';
 import { makeFakeSsh } from './helpers/fake-ssh.js';
 import { scripted } from './helpers/scripted-prompter.js';
@@ -149,6 +150,38 @@ describe('runSetup (all in temp directories)', () => {
     expect(readFileSync(join(dir, 'settings.json'), 'utf8')).toBe(text);
     expect(readdirSync(dir).some((n) => n.includes('.bak-'))).toBe(false);
     expect(s.text()).toContain('Hooks are already installed');
+  });
+
+  it('offers the status line bridge only with consent, shows what it wraps, and can restore the previous status line exactly', async () => {
+    const w = world();
+    const dir = join(w.local, '.claude');
+    const original = '{\n  "model": "opus",\n  "statusLine": {\n    "type": "command",\n    "command": "bash ~/my-line.sh",\n    "padding": 1\n  }\n}\n';
+    writeFileSync(join(dir, 'settings.json'), original);
+    // declining (the default) changes nothing
+    const no = scripted([[/Install the clayclaude hooks/, false]]);
+    await runSetup(w.deps(no.p));
+    expect(no.asked.some((q) => /status line bridge/.test(q))).toBe(true);
+    expect(readFileSync(join(dir, 'settings.json'), 'utf8')).toBe(original);
+    // accepting shows the command it keeps running and the diff, then applies with a backup
+    const yes = scripted([[/Install the clayclaude hooks/, false], [/status line bridge\?/, true], [/Apply these changes/, true]]);
+    await runSetup(w.deps(yes.p));
+    expect(yes.text()).toContain('bash ~/my-line.sh');
+    expect(yes.text()).toMatch(/^\s+\+ .*statusline/m);
+    const installed = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8'));
+    expect(parseBridge(installed.statusLine.command)).toEqual({ prev: 'bash ~/my-line.sh' });
+    expect(installed.statusLine.padding).toBe(1);
+    expect(existsSync(join(dir, 'clayclaude', 'hook.py'))).toBe(true);
+    const backups = readdirSync(dir).filter((n) => n.startsWith('settings.json.bak-clayclaude-'));
+    expect(backups.map((b) => readFileSync(join(dir, b), 'utf8'))).toEqual([original]);
+    // a re-run does not wrap the wrapper, and offers removal instead
+    const again = scripted([[/Install the clayclaude hooks/, false]]);
+    await runSetup(w.deps(again.p));
+    expect(again.text()).toMatch(/status line bridge is installed/);
+    expect(readFileSync(join(dir, 'settings.json'), 'utf8')).toBe(JSON.stringify(installed, null, 2) + '\n');
+    // removing restores the original text exactly
+    const remove = scripted([[/Install the clayclaude hooks/, false], [/Remove the status line bridge/, true], [/Apply these changes/, true]]);
+    await runSetup(w.deps(remove.p));
+    expect(readFileSync(join(dir, 'settings.json'), 'utf8')).toBe(original);
   });
 
   it('says when settings.json is a symlink that other accounts may share, and keeps the link', async () => {

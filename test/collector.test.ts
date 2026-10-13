@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Collector } from '../src/collector.js';
 import { parseConfig } from '../src/config.js';
+import { ProbeError } from '../src/probe/run.js';
 
 const NOW = Date.parse('2026-10-12T12:00:00Z');
 const cfg = parseConfig(`
@@ -34,6 +35,20 @@ describe('Collector', () => {
     expect(s.find((x) => x.key === 'local:me:a')!.hostOnline).toBe(true);
   });
 
+  it('a slow link: one probe timeout keeps the host online, a second in a row greys it', async () => {
+    let t = NOW, slow = false;
+    const c = new Collector(cfg, { now: () => t, probe: async (h) => {
+      if (h.id === 'box' && slow) throw new ProbeError('timeout', 'box: probe timed out');
+      return h.id === 'local' ? snap('/c/me', [reg('a', true)]) : snap('~/.claude-w', [reg('b', true)]);
+    } });
+    await c.pollOnce();
+    slow = true;
+    t += 60_000;
+    expect((await c.pollOnce()).find((x) => x.key === 'box:w:b')!.hostOnline).toBe(true);
+    t += 60_000;
+    expect((await c.pollOnce()).find((x) => x.key === 'box:w:b')!.hostOnline).toBe(false);
+  });
+
   it('drops stopped sessions past retention and dedupes resumed sessions', async () => {
     const c = new Collector(cfg, { now: () => NOW, probe: async (h) => h.id === 'local'
       ? snap('/c/me', [reg('old', false, { updatedAt: NOW - 4 * 3600_000 }), reg('dup', false), { ...reg('dup', true), file: 'dup2.json' }])
@@ -41,6 +56,18 @@ describe('Collector', () => {
     const s = await c.pollOnce();
     expect(s.map((x) => x.sessionId)).toEqual(['dup']);
     expect(s[0].live).toBe(true);
+  });
+
+  it('hands each session the status line record the probe found for it', async () => {
+    const turn = JSON.stringify({ type: 'assistant', timestamp: new Date(NOW - 600_000).toISOString(),
+      message: { model: 'claude-opus-5-5', content: [{ type: 'text', text: 'x' }], usage: { input_tokens: 0, cache_read_input_tokens: 150_000, cache_creation_input_tokens: 0 } } });
+    const rec = { sessionId: 'a', ts: NOW - 500_000, contextWindowSize: 1_000_000, usedPercentage: 15, totalInputTokens: 150_000 };
+    const c = new Collector(cfg, { now: () => NOW, probe: async (h) => h.id === 'local'
+      ? { ok: true, nowMs: NOW, dirs: [{ configDir: '/c/me', registries: [{ ...reg('a', true), transcript: [turn] }, { ...reg('b', true), transcript: [turn] }], events: [], contexts: { a: rec } }] }
+      : snap('~/.claude-w', []) });
+    const s = await c.pollOnce();
+    expect(s.find((x) => x.sessionId === 'a')).toMatchObject({ contextWindow: 1_000_000, contextPct: 15, contextTokens: 150_000 });
+    expect(s.find((x) => x.sessionId === 'b')).toMatchObject({ contextWindow: 200_000, contextPct: 75 });
   });
 
   it('a session seen past 200k keeps the 1M window across polls, and is forgotten once it is gone', async () => {

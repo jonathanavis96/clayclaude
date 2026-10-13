@@ -64,11 +64,13 @@ describe('clayclaude setup, end to end (temp HOME, scripted answers)', () => {
       '1', 'y',        // oauth; another tool refreshes it -> refresh: false
       '3',             // open: tmux only
       'y', 'y',        // install hooks; apply
+      'n',             // status line bridge: not now
       // ~/.claude-work
       'y', 'Work', '#4fd1c5',
       '3',             // usage: none
       '2',             // open: app
       'y', 'n',        // offer hooks, then decline the diff
+      '',              // status line bridge: the default is no
       'n',             // tablet: not now
       ...(kind === 'wsl' || kind === 'win32' ? ['n'] : []),   // hotkey
       'y', ...(ips.length ? ['none'] : []), 'board.example.test',   // LAN on, by name only

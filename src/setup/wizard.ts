@@ -5,6 +5,7 @@ import { ADB_SERIAL_RE, DEFAULT_PORT, LAN_HOST_RE, PROFILE_DIR_RE, TMUX_SESSION_
 import type { HostExec } from '../actions/exec.js';
 import type { PlatformEnv } from '../actions/platform.js';
 import { applyHooks, localIO, previewHooks, remoteIO, type ConfigIO } from '../hooks/install.js';
+import { applyStatusLine, previewStatusLine } from '../hooks/statusline.js';
 import { hotkeyTemplate, installHotkey, renderHotkeyScript, HOTKEY_RE } from '../hotkey/install.js';
 import { generateToken } from '../security.js';
 import { chooseAdb, configuredAdb, nativeAdbMustNotRun, probeAdb } from '../adbpick.js';
@@ -72,6 +73,44 @@ async function pickAdb(d: SetupDeps): Promise<string> {
   d.prompt.say(`  No adb sees an authorised tablet; keeping "${def}". Check which one owns it with ${cands.map((c) => `"${c} devices"`).join(' and ')}.`
     + ' Only one adb server can hold the tablet: never mix adb and adb.exe (README: Troubleshooting).');
   return def;
+}
+
+/**
+ * Offer the status line bridge (src/hooks/statusline.ts) for one account, or, when it is installed, refresh its hook.py
+ * and offer to take it out again. settings.json changes only after the diff is shown and confirmed.
+ */
+async function statusLineStep(p: Prompter, io: ConfigIO, dir: string, id: string, notes: string[], now: () => number) {
+  const cur = await previewStatusLine(io, dir, 'install');
+  if (cur.handEdited) { p.say('  The status line command runs the clayclaude bridge but was edited by hand; leaving it alone.'); return; }
+  const showDiff = (x: { settingsPath: string; diff: string; shared?: string }) => {
+    if (x.shared) p.say(`  ${x.shared}`);
+    p.say(`  Changes to ${x.settingsPath}:\n${x.diff.split('\n').map((l) => '    ' + l).join('\n')}`);
+  };
+  if (cur.installed) {
+    await applyStatusLine(io, dir, 'install', now()); // settings.json unchanged; hook.py rewritten (repair)
+    p.say(`  The status line bridge is installed. ${cur.previous === null ? 'There was no status line before it, so it shows nothing.' : `It keeps running your status line: ${cur.previous}`}`);
+    if (!(await p.confirm('  Remove the status line bridge and restore your previous status line?', false))) return;
+    const rm = await previewStatusLine(io, dir, 'remove');
+    showDiff(rm);
+    if (await p.confirm('  Apply these changes? (a backup is saved first)', false)) {
+      const r = await applyStatusLine(io, dir, 'remove', now());
+      p.say(`  Done.${r.backup ? ` Backup: ${r.backup}` : ''}`);
+      notes.push(`status line bridge removed for ${id}`);
+    }
+    return;
+  }
+  p.say('  The status line bridge lets the board read each session\'s real context window, which Claude Code gives only to'
+    + ' its status line. It takes the status line setting and runs your own status line inside it, unchanged.');
+  p.say(cur.previous === null
+    ? '  You have no status line now; with the bridge Claude Code shows an empty one.'
+    : `  Your status line command, which keeps running: ${cur.previous}`);
+  if (!(await p.confirm('  Install the status line bridge?', false))) { notes.push(`status line bridge skipped for ${id}`); return; }
+  showDiff(cur);
+  if (await p.confirm('  Apply these changes? (a backup is saved first)', false)) {
+    const r = await applyStatusLine(io, dir, 'install', now());
+    p.say(`  Done.${r.backup ? ` Backup: ${r.backup}` : ''} Run setup again to remove it; that restores your previous status line exactly.`);
+    notes.push(`status line bridge installed for ${id}`);
+  }
 }
 
 interface Found { host: HostConfig; dir: { path: string; name: string; email: string | null; sessionFiles: number; hasCredentials: boolean }; home: string }
@@ -217,6 +256,12 @@ export async function runSetup(d: SetupDeps): Promise<{ draft: ConfigDraft; writ
         }
       } catch (e) { p.say(`  Could not install hooks: ${e instanceof Error ? e.message.split('\n')[0] : 'error'}`); }
     }
+
+    /* 4b. the status line bridge, per account: only with consent, shown first */
+    try {
+      const aio = f.host.ssh ? remoteIO(f.host, d.exec) : io;
+      await statusLineStep(p, aio, f.dir.path, id, notes, now);
+    } catch (e) { p.say(`  Could not change the status line: ${e instanceof Error ? e.message.split('\n')[0] : 'error'}`); }
   }
   if (!accounts.length) { p.say('\nNo accounts were added, so no config was written. Run setup again when you are ready.'); return { draft, written: '', notes }; }
   draft.hosts = hosts.map((h) => ({ id: h.id, ...(h.ssh ? { ssh: h.ssh } : {}), tmuxSession: h.tmuxSession, repoRoots: h.repoRoots }));

@@ -4,18 +4,18 @@ import { focusModel, fmtTime, fmtTokens } from '../web/src/focus-model.js';
 import { buttonsHtml, feedHtml, minisHtml, ringSvg, shellHtml, statsHtml, summaryHtml, updateHeader } from '../web/src/focus-view.js';
 
 const NOW = Date.parse('2026-10-12T12:00:00Z');
-const session = (o: object = {}) => ({ key: 'k', name: 'orchard-api', host: 'desk', account: 'studio', state: 'needs-you', tmux: 'desk:@1.%1', bridgeSessionId: 'session_x', hostOnline: true, model: 'claude-opus-5-5', effort: 'high', contextPct: 91, ...o }) as any;
+const session = (o: object = {}) => ({ key: 'k', name: 'orchard-api', host: 'desk', account: 'studio', state: 'needs-you', tmux: 'desk:@1.%1', bridgeSessionId: 'session_x', hostOnline: true, model: 'claude-opus-5-5', effort: 'high', contextPct: 91, contextTokens: 226_400, contextWindow: 1_000_000, ...o }) as any;
 const sum = { lastPrompt: 'Add retry', lastAssistantText: 'Done', files: ['a.ts', 'b.ts'], toolCount: 12, tokensIn: 182_400, tokensOut: 14_950, startedAt: NOW - 95 * 60_000,
   tools: [1, 2, 3].map((i) => ({ at: new Date(2026, 9, 12, 14, 0, i).getTime(), name: 'Bash', target: `echo <${i}>` })) };
 
 describe('focus model', () => {
   it('builds the stats, a newest-first feed and the available buttons', () => {
     const v = focusModel(session(), sum, NOW, 'Studio');
-    expect(v).toMatchObject({ name: 'orchard-api', meta: 'Studio · desk · desk', word: 'NEEDS YOU', ctxPct: 91, model: 'opus-5-5', tokensIn: '182.4k', tokensOut: '15k', toolCount: 12, running: '1h 35m', canAnswer: true, canOpen: true, canAttach: true });
+    expect(v).toMatchObject({ name: 'orchard-api', meta: 'Studio · desk · desk', word: 'NEEDS YOU', ctxPct: 91, model: 'opus-5-5', context: '226.4k of 1M', toolCount: 12, running: '1h 35m', canAnswer: true, canOpen: true, canAttach: true });
     expect(v.feed.map((f) => f.time)).toEqual(['14:00:03', '14:00:02', '14:00:01']);
   });
   it('limits buttons by what the session has', () => {
-    expect(focusModel(session({ state: 'working' }), null, NOW, 'S')).toMatchObject({ canAnswer: false, toolCount: null, running: '–', tokensIn: '–' });
+    expect(focusModel(session({ state: 'working' }), null, NOW, 'S')).toMatchObject({ canAnswer: false, toolCount: null, running: '–' });
     expect(focusModel(session({ tmux: undefined }), null, NOW, 'S')).toMatchObject({ canAnswer: false, canAttach: false, canOpen: true });
     expect(focusModel(session({ bridgeSessionId: undefined }), null, NOW, 'S')).toMatchObject({ canOpen: false });
     expect(focusModel(session({ hostOnline: false }), null, NOW, 'S')).toMatchObject({ canAnswer: false, canOpen: false, canAttach: false, offline: true });
@@ -26,6 +26,14 @@ describe('focus model', () => {
     expect(focusModel(session(), null, NOW, 'S')).toMatchObject({ canMessage: false });
     for (const o of [{ state: 'working' }, { state: 'asleep', tmux: undefined }, { state: 'asleep', hostOnline: false }, { state: 'asleep', starting: true }, { state: 'stopped' }])
       expect(focusModel(session(o), null, NOW, 'S'), JSON.stringify(o)).toMatchObject({ canMessage: false });
+  });
+  it('shows the context in tokens of the window the board uses, not a sum of recent turns', () => {
+    const ctx = (o: object) => focusModel(session(o), sum, NOW, 'S').context;
+    expect(ctx({})).toBe('226.4k of 1M');
+    expect(ctx({ contextTokens: 150_000, contextWindow: 200_000 })).toBe('150k of 200k');
+    expect(ctx({ contextTokens: 950, contextWindow: 1_500_000 })).toBe('950 of 1.5M');
+    expect(ctx({ contextTokens: undefined })).toBe('–');
+    expect(ctx({ contextTokens: 12_000, contextWindow: undefined })).toBe('12k');
   });
   it('formats times and token counts', () => {
     expect(fmtTime(new Date(2026, 0, 1, 3, 4, 5).getTime())).toBe('03:04:05');
@@ -48,7 +56,8 @@ describe('focus view html', () => {
     expect(ringSvg(40)).not.toContain('var(--needs)');
     expect(ringSvg(null)).toContain('>–<');
     expect(summaryHtml(v)).toContain('Files touched');
-    expect(statsHtml(v)).toContain('182.4k / 15k');
+    expect(statsHtml(v)).toContain('<dt>context</dt><dd>226.4k of 1M</dd>');
+    expect(statsHtml(v)).not.toContain('tokens in');
   });
   it('lists other sessions as small cards', () => {
     expect(minisHtml([{ key: 'a', name: 'x<y', state: 'working' }])).toContain('data-key="a"');

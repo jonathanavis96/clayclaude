@@ -10,7 +10,7 @@ const css = ['style.css', 'overlay.css'].map((f) => readFileSync(join(ROOT, 'web
 
 const vm: FocusVM = {
   key: 'k', name: 'lantern-docs', meta: 'Lab · rack · agents', state: 'needs-you', word: 'NEEDS YOU',
-  ctxPct: 38, model: 'sonnet-4-5', effort: 'medium', tokensIn: '182.4k', tokensOut: '15k', toolCount: 43, running: '1h 35m',
+  ctxPct: 38, model: 'sonnet-4-5', effort: 'medium', context: '182.4k of 1M', toolCount: 43, running: '1h 35m',
   feed: [{ time: '02:03:18', tool: 'Write', target: 'src/lib/backoff.ts' }],
   lastPrompt: 'Document the new export flags', lastReply: 'The flag reference is written.', files: ['src/lib/backoff.ts'],
   canAnswer: true, canMessage: false, canOpen: true, canAttach: true, offline: false,

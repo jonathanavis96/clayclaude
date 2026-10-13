@@ -290,3 +290,36 @@ describe('deriveSession: idle and waiting for a new prompt, reported by Claude C
     expect(idle(input({ events: [ev('PreCompact', 1000)] }))).toBeUndefined();
   });
 });
+
+describe('deriveSession: the status line bridge record', () => {
+  const turn = (tokens: number, msAgo = 600_000, model = 'claude-opus-5-5') => J({ type: 'assistant', timestamp: iso(msAgo), message: { model, content: [{ type: 'text', text: 'x' }],
+    usage: { input_tokens: 0, cache_read_input_tokens: tokens, cache_creation_input_tokens: 0 } } });
+  const rec = (o: object = {}) => ({ sessionId: 's', ts: NOW - 500_000, contextWindowSize: 1_000_000, usedPercentage: 15, totalInputTokens: 150_000, model: 'claude-opus-5-5[1m]', ...o });
+
+  it('uses the recorded window, which beats both the configured one and the 1M guess', () => {
+    const s = deriveSession(input({ transcript: [turn(150_000)], context: rec() }), NOW)!;
+    expect(s).toMatchObject({ contextPct: 15, contextTokens: 150_000, contextWindow: 1_000_000 });
+    // a 200k session recorded as such stays on 200k even after a 1M guess was made for it
+    const wide = new Set(['local:me:s']);
+    expect(deriveSession(input({ transcript: [turn(150_000)], wide, context: rec({ contextWindowSize: 200_000 }) }), NOW)).toMatchObject({ contextPct: 75, contextWindow: 200_000 });
+  });
+  it('without a record, keeps the existing rules and says which window it used', () => {
+    expect(deriveSession(input({ transcript: [turn(150_000)] }), NOW)).toMatchObject({ contextPct: 75, contextTokens: 150_000, contextWindow: 200_000 });
+    expect(deriveSession(input({ transcript: [turn(266_000)] }), NOW)).toMatchObject({ contextPct: 27, contextWindow: 1_000_000 });
+  });
+  it('counts tokens from the transcript, which is newer, and falls back to the record\'s when the tail has none', () => {
+    expect(deriveSession(input({ transcript: [turn(400_000, 60_000)], context: rec({ totalInputTokens: 150_000 }) }), NOW)).toMatchObject({ contextTokens: 400_000, contextPct: 40 });
+    const user = J({ type: 'user', timestamp: iso(60_000), message: { content: 'hi' } });
+    expect(deriveSession(input({ transcript: [user], context: rec() }), NOW)).toMatchObject({ contextTokens: 150_000, contextPct: 15 });
+  });
+  it('ignores a record from before a model switch', () => {
+    const switched = deriveSession(input({ transcript: [turn(150_000, 60_000, 'claude-sonnet-5-5')], context: rec({ ts: NOW - 120_000 }) }), NOW)!;
+    expect(switched).toMatchObject({ contextWindow: 200_000, contextPct: 75 });
+    // the same model with the [1m] suffix is the same model
+    expect(deriveSession(input({ transcript: [turn(150_000, 60_000)], context: rec({ ts: NOW - 120_000 }) }), NOW)).toMatchObject({ contextWindow: 1_000_000 });
+  });
+  it('ignores a record for another session or with a nonsense window', () => {
+    expect(deriveSession(input({ transcript: [turn(150_000)], context: rec({ sessionId: 'other' }) }), NOW)).toMatchObject({ contextWindow: 200_000 });
+    for (const w of [0, -1, Number.NaN, '1000000', 1e12]) expect(deriveSession(input({ transcript: [turn(150_000)], context: rec({ contextWindowSize: w }) as any }), NOW), String(w)).toMatchObject({ contextWindow: 200_000 });
+  });
+});
