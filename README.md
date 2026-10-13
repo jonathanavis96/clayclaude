@@ -73,9 +73,9 @@ L1, a waving character in each account's colour, marks the accounts in **+ New**
 <td width="50%">
 <picture>
   <source srcset="docs/media/answer.gif" type="image/gif">
-  <img alt="Answering from the tablet: tapping a waiting session's question opens its permission prompt, and tapping Yes sends the answer and the session goes back to work." src="docs/media/answer.poster.jpg" width="100%">
+  <img alt="Answering from the tablet: tapping a waiting session's question opens the answer sheet, headed Claude asks for permission, with the prompt exactly as the terminal draws it and two buttons, Yes and No. Tapping Yes sends the answer and the session goes back to work." src="docs/media/answer.poster.jpg" width="100%">
 </picture>
-<br><b>Answer a waiting prompt.</b> Tap the question, then a numbered choice.
+<br><b>Answer a waiting prompt.</b> Tap the question, then Yes or No.
 </td>
 <td width="50%">
 <img alt="Starting a session from the tablet: pick an account, pick a repository, then choose the model, effort and permission mode. The model list is open, showing the newest Opus, Sonnet, Haiku and Fable, then More; the mode is Auto, preselected as the default." src="docs/media/launcher.png" width="100%">

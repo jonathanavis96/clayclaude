@@ -355,7 +355,7 @@ export async function run(d: AnswerDeps, t: Target, script: string, check: { sha
  *   3. A reply is a bracketed paste (SEND_PASTE_SCRIPT), never keystrokes, so a prompt drawn in the instant between the
  *      script's own check and its paste reads a paste, which picks nothing; its Enter goes only to the input box read
  *      after the paste, parsed here as one, by the same hash check (pressEnter).
- * One gap remains and is accepted (decided 2026-10-13; docs/plans/KNOWN-ISSUES.md #32): a reply's Enter
+ * One gap remains and is accepted (decided 2026-10-13; described in the README's answer sheet section): a reply's Enter
  * sent while Claude works can reach a permission prompt Claude mounts in the same few tens of milliseconds (Ink focuses
  * the new menu before drawing it, so no check sees it), and Enter picks its highlighted option. Busy replies keep Claude
  * Code's own mid-turn queue rather than being refused. A permission prompt is only ever answered by a tap: 1 or Escape.

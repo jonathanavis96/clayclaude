@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
@@ -94,7 +94,8 @@ describe('README.md', () => {
     // Option 1 of a real 2.1.296 plan approval approves the plan AND switches the session to auto mode.
     const plan = read('test/fixtures/panes/real-2.1.296/plan-approval.txt');
     expect(plan).toMatch(/❯ 1\. Yes, and use auto mode/);
-    for (const p of ['README.md', 'CHANGELOG.md', 'docs/plans/KNOWN-ISSUES.md', 'docs/plans/DECISIONS.md']) {
+    // The plan docs stay in the private repository; the published tree has only README and CHANGELOG.
+    for (const p of ['README.md', 'CHANGELOG.md', 'docs/plans/KNOWN-ISSUES.md', 'docs/plans/DECISIONS.md'].filter((p) => existsSync(join(root, p)))) {
       const doc = read(p).replace(/\s+/g, ' ');
       expect(doc, p).toContain('Yes, and use auto mode');
       expect(doc, p).toMatch(/permission mode/);
