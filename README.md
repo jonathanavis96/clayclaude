@@ -27,7 +27,7 @@ Because the session that is waiting on you is never the terminal you are looking
 </picture>
 
 > **One glance tells you which session is waiting on you, and you can answer it from the tablet.**<br>
-> 26 animated states · nothing installed on the hosts it watches · listens on `127.0.0.1` only.
+> 26 animated states · no agent to install on the hosts it watches · listens on `127.0.0.1` only.
 
 ## Try it in 30 seconds
 
@@ -98,18 +98,10 @@ You can also open a session in Chrome or the Claude desktop app, attach to its t
 
 ## How it works
 
-```mermaid
-flowchart LR
-  subgraph H["Your machines"]
-    L["This PC<br/>Claude Code sessions"]
-    R["Other hosts<br/>(an ~/.ssh/config alias)"]
-  end
-  D["clayclaude daemon<br/>127.0.0.1:8420"]
-  T["Android tablet<br/>Chrome, full screen"]
-  D -- "probe.py, run locally" --> L
-  D -- "probe.py streamed over ssh<br/>each poll, nothing installed" --> R
-  D <-- "adb reverse tcp:8420<br/>over the USB cable" --> T
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/how-it-works-dark.png">
+  <img alt="How it works: the Android tablet reaches the clayclaude daemon at 127.0.0.1:8420 through adb reverse over the USB cable. The daemon runs probe.py locally on this PC, where your Claude Code sessions are, and streams it over ssh on each poll to your other hosts, named by an ~/.ssh/config alias." src="docs/media/how-it-works-light.png" width="100%">
+</picture>
 
 In words: the daemon runs a small Python probe on this PC and, over ssh, on each other host. It serves the board to the tablet through `adb reverse` on the USB cable.
 

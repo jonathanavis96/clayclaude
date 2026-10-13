@@ -1,0 +1,10 @@
+flowchart LR
+  subgraph H["Your machines"]
+    L["This PC<br/>Claude Code sessions"]
+    R["Other hosts<br/>an ~/.ssh/config alias"]
+  end
+  D["clayclaude daemon<br/>127.0.0.1:8420"]
+  T["Android tablet<br/>Chrome, full screen"]
+  D -->|"probe.py, run locally"| L
+  D -->|"probe.py over ssh, each poll"| R
+  T ---|"adb reverse tcp:8420<br/>over the USB cable"| D
