@@ -13,6 +13,7 @@ line itself, so nothing this script does can change or blank what the status lin
 import json
 import os
 import re
+import signal
 import stat
 import sys
 import time
@@ -20,6 +21,8 @@ import time
 MAX_BYTES = 1000000
 KEEP_BYTES = 256000
 STATUS_MAX_BYTES = 1000000
+# The status line waits for the recorder: past this many seconds it gives up (SIGALRM's default action ends it).
+STATUS_DEADLINE_S = 2
 SESSION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 PRUNE_AFTER_S = 7 * 86400
 PRUNE_MAX = 500
@@ -91,6 +94,8 @@ def _prune(d, keep):
 
 def statusline():
     """Record the context window Claude Code reports for this session; nothing else from the input is kept."""
+    if hasattr(signal, "alarm"):
+        signal.alarm(STATUS_DEADLINE_S)  # a hung read or disk must not hold the status line up
     data = json.loads(sys.stdin.buffer.read(STATUS_MAX_BYTES).decode("utf-8"))
     if not isinstance(data, dict):
         return

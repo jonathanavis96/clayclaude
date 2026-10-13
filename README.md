@@ -192,7 +192,7 @@ Claude Code allows one status line per config directory, so the bridge takes tha
 2. hands it to `<config dir>/clayclaude/hook.py statusline`, which writes a small record for that session to `<config dir>/clayclaude/context/<session id>.json` (mode 0600): the session id, the window size, the used percentage, the input token count and the model id. Nothing else from the input is kept. The file is rewritten only when a value changes, and records nobody has written for a week are deleted when a new session starts;
 3. runs your previous status line command with the same input, in the same shell, and leaves its output and exit status as they were.
 
-The shell runs your command, not the Python script, so a failing, missing or slow-to-start recorder (or no `python3` at all) cannot blank or change your status line. The recorder adds roughly 30 to 40 ms. With no status line before, the bridge prints nothing.
+The shell runs your command, not the Python script, so a failing, missing or slow-to-start recorder (or no `python3` at all) cannot blank or change your status line. The recorder adds roughly 30 to 40 ms, and if it ever hangs (a stuck disk, say) it gives up after 2 seconds. With no status line before, the bridge prints nothing.
 
 Your previous command is kept, single quoted, in the bridge's own command in `settings.json` (it starts `__clayclaude_prev='...'`). Running setup again never wraps the bridge twice, and offers **Remove the status line bridge and restore your previous status line?** That puts your command back exactly, or removes the `statusLine` setting if there was none, after a backup. To do it by hand, set `statusLine.command` back to the text inside those quotes (with each `'\''` turned back into `'`).
 
