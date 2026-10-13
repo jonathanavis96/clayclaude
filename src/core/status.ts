@@ -42,6 +42,11 @@ export interface DeriveInput {
   usageExhausted: boolean; cacheTtlMinutes: number;
   contextWindows: Record<string, number> & { default: number };
   hostOnline: boolean; lastSeen: number;
+  /**
+   * Keys of sessions seen past their configured window before (the collector's, kept while they are on the board). One
+   * seen now is added; one in it stays on the 1M window after the turn that showed it has left the transcript tail.
+   */
+  wide?: Set<string>;
 }
 
 const str = (v: unknown) => (typeof v === 'string' && v !== '' ? v : undefined);
@@ -133,12 +138,15 @@ export function deriveSession(i: DeriveInput, now: number): Session | null {
 
   // Transcripts never carry the "[1m]" suffix, so a session seen past its configured window (now, or before a
   // compaction still in the tail) must be on the 1M one.
+  // A session seen past it once stays on 1M (i.wide), since a compaction ends up scrolling out of the tail.
+  const key = `${i.host}:${i.account}:${sessionId}`;
   const configured = contextWindowFor(t.model, i.contextWindows);
-  const window = t.peakTokens !== null && t.peakTokens > configured ? Math.max(configured, 1_000_000) : configured;
+  if (t.peakTokens !== null && t.peakTokens > configured) i.wide?.add(key);
+  const window = (t.peakTokens !== null && t.peakTokens > configured) || i.wide?.has(key) ? Math.max(configured, 1_000_000) : configured;
   const contextPct = t.contextTokens === null ? undefined : Math.min(100, Math.round((100 * t.contextTokens) / window));
   const cwd = str(d.cwd) ?? '';
   return {
-    key: `${i.host}:${i.account}:${sessionId}`,
+    key,
     host: i.host, account: i.account, sessionId, pid,
     name: str(d.name) ?? t.aiTitle ?? (basename(cwd) || sessionId.slice(0, 8)),
     cwd, state, stateSince, live: i.reg.live,

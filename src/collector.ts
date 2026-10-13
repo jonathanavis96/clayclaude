@@ -41,6 +41,8 @@ export class Collector extends EventEmitter {
   private backoff = new Map<string, { failures: number; nextAttemptAt: number }>();
   /** Daemon clock minus host clock, per host; only changed when a new measurement is off by more than the tolerance. */
   private skew = new Map<string, number>();
+  /** Keys of sessions seen past their configured context window: they stay on 1M while they are on the board. */
+  private wide = new Set<string>();
   /** Sessions the user cleared (spec §5.1): left out unless live. A live session is never hidden. */
   private hidden: (key: string) => boolean;
   /** Told when a cleared session is seen live again, so it can be un-cleared (T39). */
@@ -137,7 +139,7 @@ export class Collector extends EventEmitter {
             if (hit) { reg = { ...raw, transcript: hit.lines }; cache.set(sid, hit); }
           }
           const s = deriveSession({ host: host.id, account: account.id, reg, events, usageExhausted: this.exhausted(account.id),
-            cacheTtlMinutes: this.cfg.cacheTtlMinutes, contextWindows: this.cfg.contextWindows, hostOnline: true, lastSeen: now }, hostNow);
+            cacheTtlMinutes: this.cfg.cacheTtlMinutes, contextWindows: this.cfg.contextWindows, hostOnline: true, lastSeen: now, wide: this.wide }, hostNow);
           if (!s) continue;
           const f = files.get(s.key);
           if (f) f.files.push(raw.file); else files.set(s.key, { configDir: dir.configDir, files: [raw.file] });
@@ -148,6 +150,7 @@ export class Collector extends EventEmitter {
         }
         this.transcripts.set(`${host.id}\0${dir.configDir}`, cache);
       }
+      for (const k of this.wide) if (k.startsWith(`${host.id}:`) && !out.has(k)) this.wide.delete(k); // bounded: only sessions still listed
       for (const s of out.values()) if (s.live && this.hidden(s.key)) this.resumed(s.key);
       this.byHost.set(host.id, [...out.values()].filter((s) => s.live || !this.hidden(s.key)));
       this.files.set(host.id, files);
