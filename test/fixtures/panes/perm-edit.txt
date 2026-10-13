@@ -1,0 +1,13 @@
+────────────────────────────────────────────────────────────────────────────────
+ Edit file
+ src/server.ts
+
+   41    const port = 7420;
+   42 -  const host = '0.0.0.0';
+   42 +  const host = '127.0.0.1';
+   43    const app = create();
+
+ Do you want to make this edit to server.ts?
+ ❯ 1. Yes
+   2. Yes, allow all edits during this session (shift+tab)
+   3. No, and tell Claude what to do differently (esc)

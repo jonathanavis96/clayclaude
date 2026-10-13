@@ -1,0 +1,12 @@
+────────────────────────────────────────────────────────────────────────────────
+ ☐ Database
+
+Which database should the new service use?
+
+❯ 1. PostgreSQL
+     Mature, relational, good tooling
+  2. SQLite
+     Embedded, zero setup
+  3. Type something.
+
+Enter to select · ↑/↓ to navigate · Esc to cancel

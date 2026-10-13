@@ -1,0 +1,12 @@
+────────────────────────────────────────────────────────────
+ Bash command
+
+   npm run build --workspace packages/very-long-workspace-name
+   --if-present
+   Build the project
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and don't ask again for npm run build commands in
+      /home/demo/code/a-very-long-project-name
+   3. No, and tell Claude what to do differently (esc)

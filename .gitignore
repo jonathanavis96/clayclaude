@@ -1,0 +1,9 @@
+node_modules/
+dist/
+web/dist/
+*.log
+tools/tablet.env
+tools/perf/dist/
+test/snapshots/clay/*.actual.png
+test/snapshots/clay/*.diff.png
+qa/

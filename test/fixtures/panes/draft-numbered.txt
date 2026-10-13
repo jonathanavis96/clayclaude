@@ -1,0 +1,11 @@
+ ● Done. Anything else before I open the PR?
+
+────────────────────────────────────────────────────────────────────────────────
+❯ 1. Rename the helper
+  2. Add a test for the empty case
+────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ accept edits on (shift+tab to cycle)
+  Model: Opus · ctx 41% · $1.20
+  ~/code/orchard-api (main)
+  ⎇ main ↑2
+  MCP: 2 servers connected

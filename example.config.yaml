@@ -1,0 +1,123 @@
+# clayclaude example config.
+#
+# `clayclaude setup` writes your real config to ~/.config/clayclaude/config.yaml (mode 0600). To write one by
+# hand, copy this file there and edit it. Every key the daemon accepts is shown below, either set or in a
+# comment; anything you leave out takes the default shown. Names here (personal, work, build-box) are examples.
+
+port: 8420                  # the daemon listens on 127.0.0.1:<port>; the tablet reaches it with `adb reverse`
+pollMs: 2000                # how often each host is probed, in ms (minimum 500); an offline host backs off
+cacheTtlMinutes: 60         # prompt-cache lifetime: a card counts down this long after the last reply
+stoppedRetention: 3h        # how long a stopped session stays on the board (90s, 45m, 3h, ...)
+contextWindows:             # context window per model-name prefix, for the context % on each card
+  default: 200000           # used when no prefix matches; a model ending in [1m] is always 1,000,000
+  # claude-sonnet-4: 200000
+
+# Machines whose Claude Code sessions appear on the board. "local" is the machine running the daemon.
+hosts:
+  - id: local
+    tmuxSession: clayclaude   # tmux session that "+ New" creates windows in (letters, digits, space, _ -)
+    repoRoots: [~/code]       # the launcher offers git repos up to two levels below these
+    # Under WSL a Windows folder works too, more slowly: repoRoots: [~/code, /mnt/c/Users/<you>/source/repos]
+    # claudeBin: claude       # the claude CLI to run for "+ New" (a name on PATH, or a path)
+  - id: build-box
+    ssh: build-box            # an ssh config alias (or user@host): keys, jump hosts and ports stay in ~/.ssh/config
+    tmuxSession: agents
+    repoRoots: [~/code, ~/work]
+
+# One entry per Claude config directory (~/.claude, ~/.claude-work, ...) on a host.
+accounts:
+  - id: personal
+    label: Personal           # shown on the board
+    colour: "#e8b54a"         # the account's colour on the board (hex)
+    host: local               # a hosts[].id
+    configDir: ~/.claude
+    # Usage meter. oauth (default): reads <configDir>/.credentials.json on that host and asks Anthropic.
+    # It also refreshes the login token when it is about to expire (refresh: true, the default).
+    # ONLY ONE PROGRAM MAY REFRESH AN ACCOUNT'S TOKEN. If anything else refreshes this account (another usage
+    # dashboard or publisher), set refresh: false here, or use the http provider below; otherwise one of them
+    # ends up with a dead token and the login breaks.
+    usage: { provider: oauth, refresh: true }
+    # What "Open" does for this account's sessions: app = the Claude desktop app (see appLink below),
+    # chrome = the session page in a Chrome profile, tmux (default) = attach in a terminal only.
+    open: { type: app }
+  - id: work
+    label: Work
+    colour: "#4fd1c5"
+    host: build-box
+    configDir: ~/.claude-work   # on an ssh host, ~ is that host's home
+    # http: read usage another tool already publishes: GET <url> returns
+    # { "<key>": { "five_hour": {"utilization", "resets_at"}, "seven_day": {...} }, ... }.
+    usage: { provider: http, url: "http://localhost:8790/usage", key: work }
+    # token: a long-lived `claude setup-token` token, from the variable tokenEnv on that host (its environment first,
+    # else that one NAME=value line of envFile, which is parsed, never run). One 1-token Haiku call at most every
+    # 5 minutes; the meters come off the reply's rate-limit headers. The token never leaves that host.
+    # usage: { provider: token, tokenEnv: MY_CLAUDE_TOKEN, envFile: ~/.config/me/env }   # optional model: <model id>
+    # meter-log: the newest reading in a usage meter's JSON-lines log on that host; no API calls of its own.
+    # usage: { provider: meter-log, log: ~/ops/claude-usage-meter-work.log }
+    # Which one? A normal `claude` login: oauth. A setup token: token, or meter-log if a meter already runs for it.
+    # usage: { provider: none }   # hide the meter
+    open: { type: chrome, browser: chrome, profileDirectory: "Profile 2", incognito: false }
+    # browser names an entry in `browsers` below; profileDirectory is the folder name from chrome://version.
+
+# Browsers for open: { type: chrome }, by name. Setup fills this in when it finds Chrome.
+browsers:
+  chrome: /usr/bin/google-chrome
+  # chrome: "/mnt/c/Program Files/Google/Chrome/Application/chrome.exe"   # from WSL
+
+# Opening a session in the desktop app opens this link; {id} is the session's remote-control id.
+appLink: "claude://code/{id}"   # "https://claude.ai/code/{id}" opens it in your default browser instead
+# The command that opens a link (app actions). Default: rundll32.exe url.dll,FileProtocolHandler on Windows
+# and WSL, open on macOS, xdg-open on Linux.
+# opener: [xdg-open]
+
+# The terminal "Attach tmux" opens. wt = Windows Terminal (Windows and WSL only).
+terminal:
+  type: wt
+  bin: wt.exe
+  # Anything else: type: template, with {argv} (the attach command, as separate arguments),
+  # {script} (the same command as one shell string) and {title} (the session name).
+  # type: template
+  # template: [gnome-terminal, --title, "{title}", --, "{argv}"]
+
+# What the "+ New" launcher may offer. Options the host's installed claude does not support are hidden.
+# The model list is each account's own: read from the models API on the account's host (with its own token, which
+# never leaves that host except to api.anthropic.com), kept for a day, and a built-in list when that fails.
+launch:
+  models: []                # extra model ids to offer as well, e.g. ["claude-opus-5-5[1m]"] (aliases opus, sonnet, haiku, fable work too)
+  efforts: [low, medium, high, xhigh, max]
+  # WARNING: true offers the "Bypass permissions" mode, in which Claude runs every tool and shell command without
+  # asking you. Anyone who can reach the board could then start such a session. Leave it false unless the sessions
+  # run somewhere sandboxed. The tablet also asks for a confirm before such a Start.
+  allowBypassPermissions: false
+  # The Mode preselected in "+ New": manual, acceptEdits, auto, plan, dontAsk or bypassPermissions (default auto).
+  # A host whose claude does not list it gets Manual. bypassPermissions here needs allowBypassPermissions: true, and
+  # then a Start that keeps it needs no confirm tick (bypass picked by hand still does).
+  defaultMode: auto
+
+# The Android tablet. The daemon uses adb to keep `adb reverse` applied. Under WSL, use the Windows adb.exe.
+tablet:
+  adb: adb                  # e.g. "/mnt/c/platform-tools/adb.exe" under WSL
+  scrcpy: scrcpy            # the hotkey script's scrcpy: a record of what setup wrote into the script
+  # serial: R52N1234567     # the tablet setup chose, when more than one device is plugged in
+  chromePackage: com.android.chrome   # the Chrome package on the tablet
+  kiosk: true               # open the board full screen whenever the tablet connects; false turns it off
+
+# Windows only: the AutoHotkey v2 hotkey that hands your PC keyboard and mouse to the tablet.
+# AutoHotkey syntax: # is Win, + is Shift, ^ is Ctrl, ! is Alt. Setup asks for the hotkey, writes it into the
+# script and records it here with the script's path; the daemon reads neither, so editing them changes nothing:
+# re-run setup to change the hotkey.
+hotkey: "#+t"
+# hotkeyScript: "/mnt/c/Users/you/clayclaude/clayclaude-hotkey.ahk"   # where setup wrote the script
+
+# The answer sheet (answering a session's question from the tablet).
+ui:
+  quickReplies: ["yes", "no", "continue"]   # up to 12 buttons on a free-text question
+  confirmBeforeSend: false
+
+# LAN access: off by default, and the board is then reachable only from this machine and over USB.
+# When on, the daemon listens on every interface, and any device that is not this machine must enter the
+# token once. Run `clayclaude setup` to turn it on: it generates the token.
+lan:
+  enabled: false
+  hosts: []                 # the names or addresses devices use to reach this machine, e.g. ["192.168.1.20"]
+  # token: "<at least 24 characters, generated by setup>"

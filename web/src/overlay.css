@@ -1,0 +1,154 @@
+/* Overlays live in #overlays, outside .strips, so the board's re-rendering never touches them. */
+#overlays { position: fixed; left: 0; right: 0; top: var(--vvt, 0px); height: var(--vvh, 100vh); z-index: 20; pointer-events: none; }
+#overlays > * { pointer-events: auto; }
+#night { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 50; transition: opacity 2s; }
+
+.modal { position: absolute; inset: 0; background: rgba(5, 7, 10, .72); display: grid; place-items: center; padding: 2vh 2vw; }
+.sheet { position: absolute; inset: auto 0 0 0; max-height: 100%; overflow: auto; background: var(--panel); border-radius: 16px 16px 0 0; padding: 2vh 2vw 3vh; box-shadow: 0 -8px 40px #000a; }
+.x { background: none; border: 0; color: var(--muted); font-size: 32px; line-height: 1; padding: 0 8px; margin-left: auto; }
+button { font: inherit; color: var(--ink); background: #232833; border: 1px solid #ffffff1a; border-radius: 10px; padding: 1.4vh 1.4vw; min-height: 44px; }
+button.primary { background: #e07a4f; color: #111; border: 0; font-weight: 700; }
+button:disabled { opacity: .45; }
+.muted { color: var(--muted); } .warn { color: var(--needs); }
+.row-btns { display: flex; gap: 1vw; flex-wrap: wrap; margin-top: 1.4vh; }
+h2, h3, h4 { margin: 0; } h4 { font: 600 12px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 1.2vh 0 .4vh; }
+
+/* answer sheet */
+.sheet-head { display: flex; align-items: baseline; gap: 1.2vw; margin-bottom: 1vh; font-size: clamp(16px, 3vh, 22px); }
+.sheet-body .ask { font-size: clamp(16px, 3.2vh, 24px); font-weight: 700; margin: 1vh 0; }
+.sheet-body .last { margin: 0 0 1vh; padding-left: 1vw; border-left: 3px solid var(--needs); color: var(--muted); max-height: 14vh; overflow: auto; }
+.sheet-body .detail { font: clamp(12px, 2.2vh, 15px) var(--mono); background: #0e1014; padding: 1vh 1vw; border-radius: 8px; max-height: 16vh; overflow: auto; white-space: pre-wrap; }
+.choices { display: grid; gap: 1.2vh; }
+.choice { display: flex; gap: 1.2vw; align-items: center; text-align: left; min-height: clamp(52px, 10vh, 80px); font-size: clamp(16px, 3vh, 24px); }
+.choice.sel { border-color: var(--needs); }
+.choice .n { font: 700 1.2em var(--mono); color: var(--needs); }
+.choice small { display: block; color: var(--muted); font-size: .65em; }
+.chips { display: flex; gap: 1vw; flex-wrap: wrap; margin: 1vh 0; }
+.chip { border-radius: 999px; font-size: clamp(15px, 2.8vh, 20px); }
+.reply { display: flex; gap: 1vw; align-items: stretch; }
+.reply textarea { flex: 1; font: inherit; font-size: 18px; color: var(--ink); background: #0e1014; border: 1px solid #ffffff2a; border-radius: 10px; padding: 1vh 1vw; resize: none; }
+/* rename sheet (Task 41): the answer sheet's bottom sheet over a modal backdrop; tapping outside cancels */
+.rename-sheet textarea { min-width: 0; min-height: 44px; white-space: nowrap; overflow: hidden; }
+.rename-sheet .sheet-head b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rename-sheet .sheet-head .muted { flex: none; font-size: .7em; }
+.rename-sheet p { margin: 1vh 0 0; overflow-wrap: anywhere; }
+#overlays.short .rename-sheet p.muted { display: none; }   /* keyboard up in a tab leaves ~160 px: the field and its buttons */
+/* Task 42a: "Also rename the tmux window", on the buttons' line (it wraps under them on a narrow sheet) */
+.rename-tmux { display: flex; align-items: center; gap: .5em; min-height: 44px; margin-left: auto; color: var(--muted); font-size: clamp(13px, 2.4vh, 16px); }
+.rename-tmux input { width: 22px; height: 22px; margin: 0; flex: none; }
+/* A long-press on the focus view's title or on a name in the account popup opens the rename sheet: no text selection or callout */
+.focus-panel .who h2, .acct-sessions .mini span { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+
+/* focus view. Every clay slot (.char-large, .mini-char, .acct-char, and .char in style.css) is position: relative:
+   the character canvas is absolutely positioned and fills its nearest positioned ancestor. */
+.focus-panel { --c: var(--stop); width: min(96vw, 1200px); height: 96%; display: flex; flex-direction: column; gap: 1vh; background: color-mix(in srgb, var(--c) 8%, var(--panel)); border-left: 5px solid var(--c); border-radius: 14px; padding: 1.6vh 1.6vw; overflow: hidden; opacity: 1; } /* opacity: not the board's dimmed .st-limit/.st-stopped rows */
+.focus-panel.st-needs-you { --c: var(--needs); } .focus-panel.st-working { --c: var(--work); } .focus-panel.st-asleep { --c: var(--sleep); }
+.focus-panel.st-compacting { --c: var(--compact); } .focus-panel.st-limit { --c: var(--limit); }
+.focus-panel header { display: flex; align-items: center; gap: 2vw; }
+.char-large { position: relative; height: clamp(110px, 30vh, 220px); aspect-ratio: 1; flex: none; display: grid; place-items: center; }
+.who h2 { font-size: clamp(20px, 4vh, 32px); } .who .meta { font: 13px var(--mono); color: var(--muted); } .who .word { font: 700 clamp(14px, 2.6vh, 20px) var(--mono); color: var(--c); margin-top: .6vh; }
+.statsrow { display: flex; align-items: center; gap: 1.6vw; margin-left: auto; }
+/* portrait (the tablet is about 600 CSS px wide): the ring and stats take their own line, so × stays in the panel */
+@media (orientation: portrait) { .focus-panel header { flex-wrap: wrap; } .focus-panel #f-stats { order: 1; flex-basis: 100%; } }
+.ctx-ring { width: clamp(52px, 11vh, 80px); height: auto; } .ctx-ring text { fill: var(--ink); font: 700 12px var(--mono); }
+.stats { display: grid; grid-template-columns: repeat(2, auto); gap: .4vh 1.6vw; margin: 0; } .stats div { display: contents; }
+.stats dt { font: 11px var(--mono); color: var(--muted); } .stats dd { margin: 0; font: 600 14px var(--mono); }
+.cols { flex: 1; min-height: 0; display: grid; grid-template-columns: 1.3fr 1fr; gap: 1.6vw; }
+.feed { overflow: hidden; } .feed-row { display: grid; grid-template-columns: 5.5em 4.5em 1fr; gap: .8vw; font: clamp(11px, 2vh, 14px) var(--mono); padding: .35vh 0; border-bottom: 1px solid #ffffff0d; }
+.feed-row time { color: var(--muted); } .feed-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the summary scrolls; the action buttons under it stay in view (a Chrome tab leaves about 480 CSS px) */
+.focus-panel .card { display: flex; flex-direction: column; min-height: 0; overflow: hidden; } .focus-panel #f-sum { flex: 1 1 auto; min-height: 0; overflow: auto; } .focus-panel .card .row-btns { flex: none; }
+.clip { margin: 0; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.files { margin: 0; padding-left: 1.2em; font: 12px var(--mono); color: var(--muted); }
+.minis { display: flex; gap: 1vw; overflow-x: auto; padding-top: 1vh; border-top: 1px solid #ffffff14; }
+.mini { --c: var(--stop); flex: none; display: flex; align-items: center; gap: .6vw; padding: .6vh .8vw; min-height: 0; font-size: 13px; border-left: 3px solid var(--c); }
+.mini.st-needs-you { --c: var(--needs); } .mini.st-working { --c: var(--work); } .mini.st-asleep { --c: var(--sleep); } .mini.st-compacting { --c: var(--compact); } .mini.st-limit { --c: var(--limit); }
+.mini-char { position: relative; height: clamp(36px, 7vh, 52px); aspect-ratio: 1; flex: none; display: grid; place-items: center; }
+
+/* launcher */
+.launcher-panel, .settings-panel { width: min(96vw, 1200px); height: 96%; display: flex; flex-direction: column; background: var(--panel); border-radius: 14px; padding: 1.6vh 1.6vw; overflow: hidden; }
+.launcher-panel header, .settings-panel header { display: flex; align-items: center; }
+.steps { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.2fr) minmax(0, 1fr); gap: 1.6vw; padding-top: .4vh; }
+.steps section { display: flex; flex-direction: column; gap: .5vh; min-height: 0; } .steps h3 { font-size: clamp(14px, 3.4vh, 18.7px); } .steps h3 span { color: var(--needs); font-family: var(--mono); margin-right: .4em; }
+.accts, .repos { overflow: auto; display: grid; gap: .6vh; align-content: start; grid-auto-rows: max-content; } /* explicit button min-height would otherwise let rows shrink below content instead of scrolling */
+.acct { --c: var(--stop); display: flex; align-items: center; gap: .8vw; text-align: left; border-left: 4px solid var(--c); padding: clamp(2px, 1.6vh - 6px, 12px) .8vw; } .acct.sel, .repo.sel { outline: 2px solid var(--needs); }
+.acct-char { position: relative; height: clamp(40px, 11vh, 90px); aspect-ratio: 1; flex: none; display: grid; place-items: center; }
+.acct-info { display: grid; gap: 0; font-size: clamp(13px, 3vh, 16px); line-height: 1.1; } .acct-info .rings { width: clamp(24px, 5.8vh, 44px); }
+.acct-info .muted { font-size: clamp(12px, 2.6vh, 16px); } .acct-info small { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* one line, as .repo small */
+.repo { text-align: left; min-width: 0; } .repo b { display: block; } .repo small { display: block; color: var(--muted); font: 11px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#repo-q { font: inherit; font-size: 18px; color: var(--ink); background: #0e1014; border: 1px solid #ffffff2a; border-radius: 10px; padding: 1.2vh 1vw; }
+.opts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.2vh; align-content: start; } .opts label { display: flex; justify-content: space-between; align-items: center; gap: 1vw; }
+.opts label.check { justify-content: flex-start; }   /* a checkbox sits beside its words (final tablet pass) */
+/* Task 42a: the optional Name, a one-line textarea filling the rest of its line */
+.opts .lname textarea { flex: 1; min-width: 0; font: inherit; color: var(--ink); background: #0e1014; border: 1px solid #ffffff2a; border-radius: 8px; padding: 1vh .8vw; min-height: 40px; resize: none; white-space: nowrap; overflow: hidden; }
+.opts select, .srow select, .srow input[type=text], .srow input[type=time] { font: inherit; color: var(--ink); background: #0e1014; border: 1px solid #ffffff2a; border-radius: 8px; padding: 1vh .8vw; min-height: 40px; }
+.start { margin-top: 1vh; min-height: 56px; font-size: 18px; }
+/* a genuinely narrow or portrait screen: the three steps stack, account cards wrap, and only the repo list flexes */
+@media (max-width: 719px), (orientation: portrait) {
+  .steps { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; }
+  .accts { grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); }
+  .acct-char { height: clamp(40px, 6vh, 64px); } .acct-info .rings { width: 32px; }
+  .opts { gap: .6vh; }
+  /* Task 42a: the Name shares Start's line, so the repo list keeps the room it had before the field existed */
+  .opts { grid-template-columns: minmax(0, 1fr) auto; } .opts > * { grid-column: 1 / -1; }
+  .opts > .lname { grid-column: 1; order: 1; } .opts > .start { grid-column: 2; order: 1; margin-top: 0; }
+  /* Task 46: Remote control and Open on PC share a line, so the Mode row does not cost the repo list a row */
+  .opts > label.check:has(> [data-opt="remoteControl"]):has(+ label.check > [data-opt="openOnPc"]) { grid-column: 1; }
+  .opts > label.check:has(> [data-opt="remoteControl"]) + label.check:has(> [data-opt="openOnPc"]) { grid-column: 2; }
+  /* Keyboard up in a portrait tab (final tablet pass): as in the compact layout, a picked account's step gives way so
+     the repo search and its matches keep their room instead of being drawn over Options. */
+  #overlays.kb .steps.has-account { grid-template-rows: minmax(0, 1fr) auto; }
+  #overlays.kb .steps.has-account > section:first-child { display: none; }
+}
+
+/* Short visual viewport (the on-screen keyboard is up, or a small window): full-bleed panels, no titles. Only with the
+   keyboard up (`kb`) and an account already picked (`.has-account`) does the launcher drop the account column, so the
+   search, its matches and Start sit side by side; otherwise the account column stays and can still be picked or changed.
+   Back still closes. */
+#overlays.short .modal { padding: 0; }
+#overlays.short .launcher-panel, #overlays.short .settings-panel { width: 100%; height: 100%; border-radius: 0; padding: 4px 1.2vw; }
+#overlays.short .launcher-panel > header, #overlays.short .steps h3 { display: none; }
+#overlays.short .steps { gap: 1.2vw; padding-top: 0; }
+#overlays.short.kb .steps.has-account { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
+#overlays.short.kb .steps.has-account > section:first-child { display: none; }
+#overlays.short .steps section { gap: 4px; }
+#overlays.short #repo-q { padding: 6px 1vw; }
+#overlays.short .repo { padding: 4px 1vw; min-height: 40px; }
+#overlays.short .opts { overflow: auto; min-height: 0; } #overlays.short .start { order: -1; margin-top: 0; min-height: 48px; }
+
+/* settings. padding-right: Chrome on Android paints its overlay scrollbar (about 4 CSS px) over the right edge of the
+   scrolling grid without reserving room for it, which cut off the right column's controls (Task 34). */
+.sgrid { flex: 1; overflow: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 1.6vw; padding-top: 1vh; padding-right: 12px; align-content: start; } .sgrid .wide { grid-column: 1 / -1; }
+.srow { display: flex; justify-content: space-between; align-items: center; gap: 1vw; padding: .8vh 0; border-bottom: 1px solid #ffffff0d; min-height: 44px; } .srow small { display: block; color: var(--muted); }
+.srow input[type=checkbox] { width: 26px; height: 26px; flex: none; } .srow input[type=range] { width: 40%; } .status { font: 12px var(--mono); margin: .4vh 0; }
+.sgrid table { width: 100%; border-collapse: collapse; font-size: 14px; } .sgrid th { text-align: left; color: var(--muted); font-weight: 500; } .sgrid td, .sgrid th { padding: .5vh .6vw; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: .5em; }
+
+.toast { position: absolute; left: 50%; bottom: 3vh; transform: translateX(-50%); max-width: 80vw; padding: 1.2vh 2vw; border-radius: 10px; background: #232833; border-left: 4px solid var(--work); box-shadow: 0 6px 24px #000a; }
+.toast.error { border-left-color: var(--needs); }
+.answer-btn { display: block; margin-top: .6vh; background: var(--needs); color: #111; font-weight: 700; border: 0; }
+
+
+/* account popup (a tap on an account meter, Task 29): one window per line with its reset under the bar; the session
+   list scrolls when it does not fit */
+.account-panel { --c: var(--stop); width: min(92vw, 620px); max-height: 100%; display: flex; flex-direction: column; gap: 1.2vh; background: var(--panel); border-left: 5px solid var(--c); border-radius: 14px; padding: 1.6vh 1.6vw 1.6vh 2vw; overflow: hidden; }
+.account-panel header { display: flex; align-items: center; gap: 1.2vw; } .account-panel h2 { font-size: clamp(20px, 4vh, 28px); color: var(--c); }
+.account-panel .plan { font: 600 13px var(--mono); padding: 2px 8px; border: 1px solid var(--c); border-radius: 999px; }
+.acct-who { overflow-wrap: anywhere; }
+.acct-wins { display: grid; gap: 1vh; }
+.acct-win { display: grid; grid-template-columns: 5.5em 4.5ch minmax(0, 1fr); align-items: center; gap: .2vh 1vw; }
+.acct-win .wpct { font: 700 clamp(16px, 3.4vh, 22px) var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+.acct-win .wbar { height: 10px; border-radius: 5px; background: color-mix(in srgb, var(--c) 18%, transparent); overflow: hidden; } .acct-win .wbar span { display: block; height: 100%; border-radius: 5px; }
+.acct-win .wreset { grid-column: 2 / -1; font: 13px var(--mono); color: var(--muted); }
+.account-panel h3 { font-size: 15px; color: var(--muted); font-weight: 500; }
+.acct-sessions { display: flex; flex-wrap: wrap; gap: 1vh 1vw; min-height: 0; overflow: auto; } .acct-sessions .mini { min-height: 44px; } .acct-sessions .mini small { color: var(--muted); }
+.acct-age { font: 12px var(--mono); }
+/* Task 46: the bypassPermissions mode reads in the warning colour (its select, its warning line and its confirm tick).
+   Its two lines can make Options taller than the panel (a landscape tab): the column then scrolls, and choosing it
+   scrolls Start into view (launcher.ts). */
+.opts select.warn { color: var(--needs); border-color: var(--needs); }
+.opts .bypass-warn { font-size: 13px; line-height: 1.2; }
+.steps .opts { overflow: auto; min-height: 0; padding-right: 6px; }   /* room for Chrome's overlay scrollbar (as .sgrid) */
+/* A select is as wide as its widest option ('⚠ Bypass permissions'): capped at its column, so Options (and Start)
+   stay inside it on a small landscape screen */
+.opts select { min-width: 0; max-width: 100%; }
