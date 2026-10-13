@@ -9,6 +9,7 @@ import WebSocket from 'ws';
 import { startServer } from '../src/server.js';
 import { parseConfig } from '../src/config.js';
 import { generateToken } from '../src/security.js';
+import { createActionRoutes } from '../src/actions/routes.js';
 
 const TOKEN = generateToken();
 const base = `
@@ -137,5 +138,58 @@ describe.skipIf(!lanIp)('server security (LAN mode)', () => {
     expect((await raw(port, {})).status).toBe(200);
     const page = await raw(port, { address: lanIp, host: `${lanIp}:${port}`, headers: { cookie: 'cc_token=%E0%A4%A' } });
     expect(page.status).toBe(401);
+  });
+});
+
+/**
+ * Task 43: the message action is one of the action routes, behind the same rules as Answer: a matching Host and Origin,
+ * the X-Clayclaude header and a JSON body, and from the LAN the token. Only then does it reach the action itself.
+ */
+describe('the message action behind the action-route rules', () => {
+  const reached: unknown[] = [];
+  const api = { message: async (r: unknown) => { reached.push(r); return { ok: true, sent: 'message (2 characters)' }; } } as any;
+  async function bootReal(lan: boolean) {
+    const web = mkdtempSync(join(tmpdir(), 'cc-web-'));
+    writeFileSync(join(web, 'index.html'), '<h1>board</h1>');
+    const cfg = parseConfig(base + (lan ? `lan: {enabled: true, token: "${TOKEN}", hosts: ["${lanIp}"]}\n` : ''));
+    const s = await startServer({ cfg, collector: new FakeCollector() as any, usage: new FakeUsage() as any, webRoot: web, port: 0,
+      handlers: [createActionRoutes(api, { mode: 'live' })] });
+    close = s.close;
+    return s.port;
+  }
+  const send = (port: number, o: { address?: string; host?: string; origin?: string; headers?: Record<string, string> }) =>
+    new Promise<{ status: number; body: string }>((resolve, reject) => {
+      const body = JSON.stringify({ action: 'message', sessionId: 'k', text: 'hi' });
+      const r = request({ host: o.address ?? '127.0.0.1', port, path: ACTION, method: 'POST',
+        headers: { ...(o.host ? { host: o.host } : {}), ...(o.origin ? { origin: o.origin } : {}), 'content-length': Buffer.byteLength(body), ...o.headers } }, (res) => {
+        let b = ''; res.on('data', (c) => (b += c)); res.on('end', () => resolve({ status: res.statusCode!, body: b }));
+      });
+      r.on('error', reject); r.end(body);
+    });
+  it('loopback: refused without a matching Origin, with a rebinding Host, or without X-Clayclaude; sent with all of them', async () => {
+    reached.length = 0;
+    const port = await bootReal(false);
+    const own = `http://127.0.0.1:${port}`;
+    expect((await send(port, { headers: json })).status).toBe(403);
+    expect((await send(port, { origin: 'https://evil.example', headers: json })).status).toBe(403);
+    expect((await send(port, { host: 'evil.example', origin: 'http://evil.example', headers: json })).status).toBe(403);
+    expect((await send(port, { origin: own, headers: { 'content-type': 'application/json' } })).status).toBe(403);
+    expect((await send(port, { origin: own, headers: { 'content-type': 'text/plain', 'x-clayclaude': '1' } })).status).toBe(403);
+    expect(reached).toEqual([]);
+    const ok = await send(port, { origin: own, headers: json });
+    expect(ok.status).toBe(200);
+    expect(reached).toEqual([{ sessionId: 'k', text: 'hi' }]);
+  });
+  it.skipIf(!lanIp)('LAN: refused without the token, sent with it and a matching Origin', async () => {
+    reached.length = 0;
+    const port = await bootReal(true);
+    const origin = `http://${lanIp}:${port}`;
+    const lan = (h: Record<string, string>, o?: string) => send(port, { address: lanIp, host: `${lanIp}:${port}`, origin: o, headers: { ...json, ...h } });
+    expect((await lan({}, origin)).status).toBe(401);
+    expect((await lan({ authorization: 'Bearer wrong' }, origin)).status).toBe(401);
+    expect((await lan({ authorization: `Bearer ${TOKEN}` }, 'https://evil.example')).status).toBe(403);
+    expect(reached).toEqual([]);
+    expect((await lan({ authorization: `Bearer ${TOKEN}` }, origin)).status).toBe(200);
+    expect(reached).toHaveLength(1);
   });
 });

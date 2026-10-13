@@ -33,6 +33,7 @@ export function summaryHtml(v: FocusVM): string {
 export function buttonsHtml(v: FocusVM): string {
   return [
     v.canAnswer ? '<button class="primary" data-act="answer">Answer</button>' : '',
+    v.canMessage ? '<button class="primary" data-act="message">Message</button>' : '',
     v.canOpen ? '<button data-act="open">Open</button>' : '',
     v.canAttach ? '<button data-act="attach">Attach tmux</button>' : '',
     v.offline ? '<span class="tag">host offline</span>' : '',

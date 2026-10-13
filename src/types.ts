@@ -77,6 +77,26 @@ export interface Session {
   starting?: true;
   /** A headless helper (`claude -p`, the Agent SDK), hidden from the board unless the person asks (Task 45). */
   background?: true;
+  /**
+   * Claude Code itself reports a pending permission prompt: its registry says it waits on one (status "waiting", for
+   * anything but "input needed" or "dialog open"), or its "needs your permission" Notification hook has not been
+   * followed by a later event or an answer. The answer sheet then offers only Yes / No, whatever the screen shows.
+   */
+  permission?: true;
+  /**
+   * Claude Code itself reports the session working: its registry status is "busy", it is compacting, or (an older Claude
+   * Code that writes no status) its state is working. A typed reply is still sent then (Claude Code queues it); the
+   * answer sheet treats the input box as busy (pane.ts, textView).
+   */
+  busy?: true;
+  /**
+   * Claude Code itself reports the session idle and waiting for a new prompt (Tasks 43 and 42, the idle gate's first
+   * condition; never the screen). With hook events for the session: its last one is Stop, or SessionStart with nothing
+   * after it (the idle "waiting for your input" note aside), no prompt is in the transcript since, and the registry, if it
+   * writes a status, says idle. Without hook events: the registry status is idle. Only for a live, asleep session with no
+   * permission pending and not busy.
+   */
+  idle?: true;
 }
 
 export interface AccountUsage {

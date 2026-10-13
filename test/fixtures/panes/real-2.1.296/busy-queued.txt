@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.296
+▝▜██████▀  Haiku 5.5 · Claude Max                  
+ ▝▝   ▝▝   /home/demo/code/harbor-notes · /rc            
+
+
+❯ /model haiku                                                                                                          
+  ⎿  Set model to Haiku 5.5 and saved as your default for new sessions
+
+❯ Use the Bash tool to run exactly: touch /home/demo/code/harbor-notes/marker.txt  (no other tools, no        
+  explanation)                                                                                                          
+
+  Ran 1 shell command                       
+  ⎿  Interrupted · What should Claude do instead?             
+
+✻ Brewed for 1s · done 4:35 PM
+
+❯ Reply with only the word pong                                                                                         
+
+● pong
+                                                        
+✻ Brewed for 4s · done 4:35 PM
+                        
+❯ Write a 500-word story about a lighthouse keeper. No tools.                                                           
+                                                                                              
+❯ After that, reply with only: queued-ok                                                                                
+  ctrl+x ctrl+s to send now
+
+                             
+
+
+* Effecting… (4s · ↓ 444 tokens · thought for 1s)                                      
+  ⎿  Tip: You can control how big a workflow is just by prompting. Ask for a small workflow, cap it with "use at most 5 
+     agents", or set a default with Dynamic workflow size in /config.
+                                                                                                                        
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Press up to edit queued messages                           
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  🤖 Haiku 5.5 | 📁 repo | 🌿 master | 🧠 56,388
+  ⏸ manual mode on · ← for agents                                                                                       

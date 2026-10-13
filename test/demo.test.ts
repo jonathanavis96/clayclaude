@@ -59,11 +59,13 @@ describe('demo actions', () => {
     return { s, r: (await d.api.readPrompt(s.key)) as any };
   };
 
-  it('offers a parseable permission menu and a free-text question', async () => {
+  it('offers a permission prompt (Yes / No, shown verbatim) and a free-text question', async () => {
     const d = createDemo({ now: clock().now });
     const menu = await prompt(d, 'tidepool-ui');
-    expect(menu.r.prompt.kind).toBe('menu');
-    expect(menu.r.prompt.options.map((o: any) => o.key)).toEqual(['1', '2', '3']);
+    expect(menu.r.prompt.kind).toBe('permission');
+    expect(menu.r.prompt.options.map((o: any) => [o.key, o.label])).toEqual([['yes', 'Yes'], ['no', 'No']]);
+    expect(menu.r.prompt.detail).toContain(' Bash command');
+    expect(menu.r.prompt.detail).toContain(' ❯ 1. Yes');
     const text = await prompt(d, 'lantern-docs');
     expect(text.r.prompt).toMatchObject({ kind: 'text', quickReplies: ['yes', 'no', 'continue'] });
   });
@@ -71,9 +73,11 @@ describe('demo actions', () => {
     const c = clock();
     const d = createDemo({ now: c.now });
     const { s, r } = await prompt(d, 'tidepool-ui');
-    expect(await d.api.answer({ sessionId: s.key, promptHash: 'stale', choice: '1' })).toMatchObject({ ok: false, error: 'prompt_changed' });
+    expect(await d.api.answer({ sessionId: s.key, promptHash: 'stale', choice: 'yes' })).toMatchObject({ ok: false, error: 'prompt_changed' });
     expect(d.collector.sessions().find((x) => x.key === s.key)!.state).toBe('needs-you');
-    expect(await d.api.answer({ sessionId: s.key, promptHash: r.prompt.hash, choice: '2' })).toEqual({ ok: true, sent: 'option 2' });
+    for (const bad of ['1', '2']) expect(await d.api.answer({ sessionId: s.key, promptHash: r.prompt.hash, choice: bad })).toMatchObject({ ok: false, error: 'bad_request' });
+    expect(await d.api.answer({ sessionId: s.key, promptHash: r.prompt.hash, text: 'yes' })).toMatchObject({ ok: false, error: 'bad_request' });
+    expect(await d.api.answer({ sessionId: s.key, promptHash: r.prompt.hash, choice: 'no' })).toEqual({ ok: true, sent: 'No' });
     expect(d.collector.sessions().find((x) => x.key === s.key)!.state).toBe('working');
     expect(await d.api.readPrompt(s.key)).toMatchObject({ ok: false, error: 'no_prompt' });
   });
@@ -81,10 +85,29 @@ describe('demo actions', () => {
     const c = clock();
     const d = createDemo({ now: c.now });
     const { s, r } = await prompt(d, 'tidepool-ui');
-    await d.api.answer({ sessionId: s.key, promptHash: r.prompt.hash, choice: '1' });
+    expect(await d.api.answer({ sessionId: s.key, promptHash: r.prompt.hash, choice: 'yes' })).toEqual({ ok: true, sent: 'Yes' });
     c.advance(ANSWERED_SHOW_MS + 1000);
     expect(d.collector.sessions().find((x) => x.key === s.key)!.state).toBe('needs-you');
-    expect(await d.api.readPrompt(s.key)).toMatchObject({ ok: true, prompt: { kind: 'menu' } });
+    expect(await d.api.readPrompt(s.key)).toMatchObject({ ok: true, prompt: { kind: 'permission' } });
+  });
+  // Task 43: a new message to an idle session is simulated: the idle gate's own refusals, and a sent message working for a while.
+  it('message: an idle session takes it and works for a while; any other session refuses it; "fail" simulates a failure', async () => {
+    const c = clock();
+    const d = createDemo({ now: c.now });
+    const all = d.collector.sessions();
+    const idle = all.find((x) => x.state === 'asleep' && x.tmux)!;
+    expect(idle).toMatchObject({ idle: true });
+    for (const s of all.filter((x) => x.state !== 'asleep')) {
+      expect(s.idle, s.name).toBeUndefined();
+      expect(await d.api.message({ sessionId: s.key, text: 'next' }), s.name).toMatchObject({ ok: false });
+    }
+    expect(await d.api.message({ sessionId: idle.key, text: 'fail' })).toMatchObject({ ok: false, error: 'failed' });
+    expect(await d.api.message({ sessionId: idle.key, text: '   ' })).toMatchObject({ ok: false, error: 'bad_request' });
+    expect(await d.api.message({ sessionId: idle.key, text: 'x'.repeat(4001) })).toMatchObject({ ok: false, error: 'too_long' });
+    expect(await d.api.message({ sessionId: idle.key, text: 'add a changelog entry' })).toEqual({ ok: true, sent: 'message (21 characters)' });
+    expect(d.collector.sessions().find((x) => x.key === idle.key)).toMatchObject({ state: 'working' });
+    expect(await d.api.message({ sessionId: idle.key, text: 'again' })).toMatchObject({ ok: false });
+    expect(await d.api.message({ sessionId: 'nope', text: 'hi' })).toMatchObject({ ok: false, error: 'unknown_session' });
   });
   it('typing "fail" into the text question simulates a failure', async () => {
     const d = createDemo({ now: clock().now });
@@ -166,5 +189,16 @@ describe('demo actions', () => {
     const j = JSON.stringify(createDemo({ now: clock().now }).publicConfig());
     expect(j).toContain('"demo":true');
     expect(j).not.toMatch(/token/i);
+  });
+});
+
+describe('demo rename (Task 42)', () => {
+  it('renames on the board only and says the ticks did nothing: no tmux window, nothing in Claude Code', async () => {
+    const d = createDemo({ now: clock().now });
+    const s = d.collector.sessions()[0];
+    expect(await d.api.rename(s.key, 'demo one', { claude: true })).toMatchObject({ ok: true, name: 'demo one', message: expect.stringContaining('the demo renames nothing in Claude Code') });
+    expect(await d.api.rename(s.key, 'demo two', { tmux: true, claude: true })).toMatchObject({ ok: true, message: expect.stringContaining('no tmux window and nothing in Claude Code') });
+    expect(await d.api.rename(s.key, 'demo three', { tmux: true })).toMatchObject({ ok: true, message: expect.stringContaining('(the demo renames no tmux window)') });
+    expect((await d.api.rename(s.key, 'demo four')) as any).toMatchObject({ ok: true, message: 'Renamed to demo four' });
   });
 });

@@ -229,13 +229,14 @@ describe.skipIf(!CHROMIUM)('rename sheet layout (real CSS in Chromium)', () => {
     const page = await browser.newPage({ viewport: { width: w, height: h } });
     try {
       const short = vvh < 360 ? ' short kb' : '';
-      // Task 42a: a session in tmux also gets the "Also rename the tmux window" tick
+      // Task 42a: a session in tmux also gets the "Also rename the tmux window" tick, and (Task 42) "Also rename in Claude Code"
       await page.setContent(`<style>${css}</style><div id="overlays" class="${short}" style="--vvh:${vvh}px"><div class="rename modal">${renameSheetHtml({ name: 'a much longer board nickname here!', derivedName: 'orchard-api-session-with-a-long-name', tmux: 'agents:@1.%1', live: true })}</div></div>`);
       const r = await page.evaluate(() => {
         const box = (e: Element | null) => { const b = e!.getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height }; };
         return { ov: box(document.getElementById('overlays')), sheet: box(document.querySelector('.sheet')), input: box(document.querySelector('#rename-text')),
           btns: [...document.querySelectorAll('.row-btns button')].map(box), x: box(document.querySelector('.x')), tick: box(document.querySelector('.rename-tmux')),
-          box: box(document.querySelector('#rename-tmux')), words: (document.querySelector('.rename-tmux') as HTMLElement).innerText };
+          box: box(document.querySelector('#rename-tmux')), words: (document.querySelector('.rename-tmux') as HTMLElement).innerText,
+          ctick: box(document.querySelector('.rename-claude')), cbox: box(document.querySelector('#rename-claude')), cwords: (document.querySelector('.rename-claude') as HTMLElement).innerText };
       });
       expect(inside(r.sheet, r.ov), 'sheet inside the visible area').toBe(true);
       for (const b of [r.input, ...r.btns, r.x, r.tick]) expect(inside(b, r.sheet), JSON.stringify(b)).toBe(true);
@@ -244,6 +245,16 @@ describe.skipIf(!CHROMIUM)('rename sheet layout (real CSS in Chromium)', () => {
       expect(r.tick.h, 'the tick is a comfortable tap target').toBeGreaterThanOrEqual(40);
       expect(r.box.w).toBeGreaterThanOrEqual(20);
       expect(r.words).toContain('Also rename the tmux window');
+      // Task 42: "Also rename in Claude Code" beside it, as easy to tap, overlapping nothing
+      expect(inside(r.ctick, r.sheet), JSON.stringify(r.ctick)).toBe(true);
+      for (const b of [r.input, r.tick, ...r.btns]) expect(overlap(r.ctick, b), JSON.stringify(b)).toBe(false);
+      expect(r.ctick.h).toBeGreaterThanOrEqual(40);
+      expect(r.cbox.w).toBeGreaterThanOrEqual(20);
+      expect(r.cwords).toContain('Also rename in Claude Code');
+      // the two ticks stay together on one line, at the sheet's right (tablet check: in portrait the second one wrapped
+      // alone to the left under the buttons)
+      expect(Math.abs(r.ctick.y - r.tick.y), 'both ticks on one line').toBeLessThan(2);
+      expect(r.ctick.x).toBeGreaterThan(r.tick.x);
       expect(r.input.w).toBeGreaterThan(200);
     } finally { await page.close(); }
   });

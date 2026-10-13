@@ -70,7 +70,7 @@ export async function runDemo(args: string[]): Promise<void> {
   const build = buildReport(webRoot, fileURLToPath(new URL('../../', import.meta.url)));
   console.log(build.line);
   if (build.warning) console.warn(`clayclaude: warning: ${build.warning}`);
-  console.log('Simulated data only: no hosts, no credentials, and nothing is run when you tap Open, Attach, Answer or Start.');
+  console.log('Simulated data only: no hosts, no credentials, and nothing is run when you tap Open, Attach, Answer, Message or Start.');
   await new Promise<void>((resolve) => {
     const stop = async () => { adb?.stop(); demo.stop(); await clayRoutes.close(); await srv.close(); resolve(); };
     process.once('SIGINT', stop); process.once('SIGTERM', stop);

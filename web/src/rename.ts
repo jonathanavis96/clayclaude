@@ -14,15 +14,20 @@ const NAME = '.row[data-key] .name, .gcard[data-key] .name';
 /** Task 42a: the rename sheet offers to rename the tmux window too only for a running session in tmux. */
 const inTmux = (s: Partial<Pick<Session, 'tmux' | 'live'>>) => !!s.tmux && !!s.live;
 
+const boardOnlyNote = (own: string) => `Only the board shows this name. The session keeps its own: <span class="rename-derived">${esc(own)}</span>`;
+/** Task 42: what "Also rename in Claude Code" does, shown in place of the board-only note while it is ticked. */
+const CLAUDE_NOTE = 'Claude Code takes this name too: <code>/rename</code> is typed into the session, only while it is idle and waiting for a prompt.';
+
 export function renameSheetHtml(s: Pick<Session, 'name' | 'derivedName'> & Partial<Pick<Session, 'tmux' | 'live'>>): string {
   const own = s.derivedName ?? s.name;
   return `<section class="sheet rename-sheet"><header class="sheet-head"><b>${esc(s.name)}</b><span class="muted">Rename on this board</span>`
     + `<button class="x" data-act="cancel" aria-label="Close">×</button></header><div class="sheet-body">`
     + `<div class="reply"><textarea id="rename-text" rows="1" maxlength="${MAX}" aria-label="Name on the board" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="done">${esc(s.name)}</textarea></div>`
-    + `<p class="muted">Only the board shows this name. The session keeps its own: <span class="rename-derived">${esc(own)}</span></p>`
+    + `<p class="muted rename-note">${boardOnlyNote(own)}</p>`
     + `<p class="warn" hidden></p>`
     + `<div class="row-btns"><button class="primary" data-act="save">Save</button><button data-act="reset"${s.derivedName === undefined ? ' disabled' : ''}>Reset</button><button data-act="cancel">Cancel</button>`
-    + (inTmux(s) ? '<label class="rename-tmux"><input type="checkbox" id="rename-tmux"> Also rename the tmux window</label>' : '')
+    + (inTmux(s) ? '<span class="rename-ticks"><label class="rename-tick rename-tmux"><input type="checkbox" id="rename-tmux"> Also rename the tmux window</label>'
+      + '<label class="rename-tick rename-claude"><input type="checkbox" id="rename-claude"> Also rename in Claude Code</label></span>' : '')
     + `</div>`
     + `</div></section>`;
 }
@@ -31,7 +36,9 @@ export function renameSheetHtml(s: Pick<Session, 'name' | 'derivedName'> & Parti
  * The rename sheet: a field holding the board's name for the session, Save (or Enter), Reset (back to the session's own
  * name) and Cancel. It sits at the bottom of the overlays, which follow the visual viewport, so the on-screen keyboard
  * never covers it (as the answer sheet). It only ever posts the `rename` action, and never keys. Ticking "Also rename
- * the tmux window" (Task 42a, off by default) asks the daemon to rename the session's tmux window to the same name.
+ * the tmux window" (Task 42a, off by default) asks the daemon to rename the session's tmux window to the same name;
+ * "Also rename in Claude Code" (Task 42, off by default) asks it to type `/rename <name>` into the session, which it
+ * does only under the idle gate (src/actions/message.ts). A refusal stays in the sheet and renames nothing.
  * Returns a function that focuses the field (from a user gesture, so the keyboard comes up).
  */
 export function openRenameSheet(s: Session): () => void {
@@ -43,16 +50,19 @@ export function openRenameSheet(s: Session): () => void {
   const input = el.querySelector<HTMLTextAreaElement>('#rename-text')!;
   const warn = el.querySelector<HTMLElement>('.warn')!;
   const tmux = el.querySelector<HTMLInputElement>('#rename-tmux');
-  // Pressing the tick leaves the focus (and so the keyboard) in the field; the click still ticks it. Tablet check: in
+  const claude = el.querySelector<HTMLInputElement>('#rename-claude');
+  // Pressing a tick leaves the focus (and so the keyboard) in the field; the click still ticks it. Tablet check: in
   // full screen with the keyboard up, a tap on the box closed the keyboard, the sheet moved, and the box stayed as it was.
   const keep = (e: Event) => e.preventDefault();
-  for (const t of ['pointerdown', 'mousedown']) el.querySelector('.rename-tmux')?.addEventListener(t, keep);
+  for (const t of ['pointerdown', 'mousedown']) el.querySelectorAll('.rename-tick').forEach((l) => l.addEventListener(t, keep));
+  const note = el.querySelector<HTMLElement>('.rename-note')!;
+  claude?.addEventListener('change', () => { note.innerHTML = claude.checked ? CLAUDE_NOTE : boardOnlyNote(s.derivedName ?? s.name); });
   let busy = false;
   const close = pushOverlay(el, () => {});
   const send = async (name: string | null) => {
     if (busy) return;
     busy = true;
-    const r = await postAction<{ message: string; tmuxError?: string }>({ action: 'rename', sessionId: s.key, name, ...(tmux?.checked ? { tmux: true } : {}) });
+    const r = await postAction<{ message: string; tmuxError?: string }>({ action: 'rename', sessionId: s.key, name, ...(tmux?.checked ? { tmux: true } : {}), ...(claude?.checked ? { claude: true } : {}) });
     busy = false;
     // The board name is saved even when the window could not be renamed: close, and say so as an error.
     if (r.ok) { close(); toast(r.message, r.tmuxError ? 'error' : 'ok'); return; }

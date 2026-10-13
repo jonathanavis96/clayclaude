@@ -5,22 +5,35 @@ import { fail, type ActionApi, type PromptView, type RepoEntry, type Result, typ
 import { BOARD, DEMO_MODELS, DEMO_YAML, GALLERY, createClock, demoUsage, sessionAt, type DemoDef, type SessionOverride } from './scenario.js';
 import type { AccountUsage, Session } from '../types.js';
 import { publicConfig } from '../actions/public-config.js';
+import { PERMISSION_OPTIONS } from '../actions/pane.js';
 import { NicknameStore, cleanNickname, renameIn } from '../nicknames.js';
 import { groupModels } from '../actions/models.js';
 import { PERMISSION_MODES, defaultModeFor } from '../actions/launch.js';
+import { cleanText } from '../actions/answer.js';
+import { idleGate } from '../actions/message.js';
 
 export type ScenarioName = 'board' | 'gallery';
 
 /** How long (real time) an answered demo session shows as working before its question comes back. */
 export const ANSWERED_SHOW_MS = 20_000;
 
-const MENU: PromptView = {
-  kind: 'menu', hash: '', title: 'Do you want to proceed?', detail: 'Bash command\nnpm run build\nBuild the project',
-  options: [
-    { key: '1', label: 'Yes', selected: true },
-    { key: '2', label: "Yes, and don't ask again for npm run build commands in /home/demo/code/tidepool-ui", selected: false },
-    { key: '3', label: 'No, and tell Claude what to do differently (esc)', selected: false },
-  ], quickReplies: [],
+/** A permission prompt as the answer path shows it: Yes / No only, and the prompt region verbatim (2.1.296 layout). */
+const PERMISSION: PromptView = {
+  kind: 'permission', hash: '', title: '', quickReplies: [], options: PERMISSION_OPTIONS.map((o) => ({ ...o })),
+  detail: [
+    '─'.repeat(24),
+    ' Bash command',
+    ' Build the project',
+    '╌'.repeat(24),
+    ' │ npm run build',
+    '╌'.repeat(24),
+    ' Do you want to proceed?',
+    ' ❯ 1. Yes',
+    "   2. Yes, and don't ask again for npm run build commands in /home/demo/code/tidepool-ui",
+    '   3. No',
+    '',
+    ' Esc to cancel · Tab to amend',
+  ].join('\n'),
 };
 const TEXT: PromptView = { kind: 'text', hash: '', title: '', detail: 'Should I also update the changelog, or leave it for the release PR?', options: [], quickReplies: [] };
 /** Claude's folder-trust question as 2.1.296 draws it (test/fixtures/panes/trust-folder.txt), for a folder never trusted (Task 40). */
@@ -106,7 +119,7 @@ export function createDemo(opts: DemoOptions = {}) {
     if (s.state !== 'needs-you' || answered.has(s.key)) return null;
     const d = defOf(s);
     if (d.prompt === 'trust') return withHash(trustView(s.cwd), []);
-    return d.prompt === 'menu' ? withHash(MENU, quick) : withHash({ ...TEXT, detail: s.question ?? TEXT.detail }, quick);
+    return d.prompt === 'menu' ? withHash(PERMISSION, quick) : withHash({ ...TEXT, detail: s.question ?? TEXT.detail }, quick);
   };
 
   const api: ActionApi = {
@@ -139,8 +152,9 @@ export function createDemo(opts: DemoOptions = {}) {
       const p = promptFor(s);
       if (!p) return fail('no_prompt', 'nothing is waiting for input in that pane');
       if (p.hash !== req.promptHash) return fail('prompt_changed', 'The prompt changed. Nothing was sent.', p);
-      if (req.choice !== undefined && !p.options.some((o) => o.key === req.choice)) return fail('bad_request', 'that is not one of the options on screen', p);
-      if (req.text !== undefined && p.kind !== 'text') return fail('bad_request', 'a menu is showing; choose one of its options', p);
+      if (req.choice !== undefined && !p.options.some((o) => o.key === req.choice))
+        return fail('bad_request', p.kind === 'permission' ? 'This is a permission prompt: answer Yes or No. Other choices are on the PC.' : 'that is not one of the options on screen', p);
+      if (req.text !== undefined && p.kind !== 'text') return fail('bad_request', p.kind === 'permission' ? 'This is a permission prompt: answer Yes or No.' : 'a menu is showing; choose one of its options', p);
       if (p.trust) {
         // Yes: Claude starts and registers, so the row becomes an ordinary working session. No: Claude exits and the pane closes.
         const d = defOf(s);
@@ -152,7 +166,19 @@ export function createDemo(opts: DemoOptions = {}) {
       if (req.text !== undefined && req.text.trim().toLowerCase() === 'fail') return fail('failed', 'tmux: can\'t find pane (simulated failure; type anything else)');
       answered.add(s.key);
       overrides.set(s.key, { state: 'working', since: now() });
-      return { ok: true, sent: req.choice !== undefined ? `option ${req.choice}` : `reply (${req.text!.length} characters)` };
+      return { ok: true, sent: req.choice === 'yes' ? 'Yes' : req.choice === 'no' ? 'No' : req.choice !== undefined ? `option ${req.choice}` : `reply (${req.text!.length} characters)` };
+    },
+    async message(req) {
+      // Task 43, simulated: the idle gate's own refusals; a sent message makes the session work for a while.
+      const s = find(req.sessionId);
+      if (!s) return fail('unknown_session', 'that session is no longer listed');
+      const text = cleanText(req.text);
+      if (typeof text !== 'string') return text;
+      const why = idleGate(s);
+      if (why) return fail('no_prompt', why);
+      if (text.trim().toLowerCase() === 'fail') return fail('failed', 'tmux: can\'t find pane (simulated failure; type anything else)');
+      overrides.set(s.key, { state: 'working', since: now() });
+      return { ok: true, sent: `message (${text.length} characters)` };
     },
     async launchOptions() {
       // Task 46: a fixture model list, grouped as the daemon groups a discovered one. Lab plays an older claude without --permission-mode.
@@ -212,7 +238,9 @@ export function createDemo(opts: DemoOptions = {}) {
     },
     async rename(id, name, o) {
       const r = await renameIn(names, find(id), name);
-      return r.ok && o?.tmux ? { ...r, message: `${r.message} (the demo renames no tmux window)` } : r;
+      if (!r.ok || (!o?.tmux && !o?.claude)) return r;
+      const what = [o.tmux && 'no tmux window', o.claude && 'nothing in Claude Code'].filter(Boolean).join(' and ');
+      return { ...r, message: `${r.message} (the demo renames ${what})` };
     },
     async summary(id) {
       const s = find(id);

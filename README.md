@@ -201,7 +201,7 @@ One row per session, most urgent first: needs you, at the usage limit, working, 
 
 The top bar holds the clock and date, the needs-you, working, asleep and stopped counts, each account's usage meters, **+ New** and **⚙** settings. Tap a count to show only those sessions; tap it again, the clock or blank space to show all. Double-tap the clock or blank space to enter or leave full screen.
 
-A needs-you row has an **Answer** button (or **Open**, for a session that is not in tmux but has a remote-control link). Tap anywhere else on a row for its focus view.
+A needs-you row has an **Answer** button (or **Open**, for a session that is not in tmux but has a remote-control link), and an asleep row in tmux has **Message**. Tap anywhere else on a row for its focus view.
 
 A stopped row has **Clear**, and the stopped filter has **Clear all stopped**. A cleared session stays hidden (kept in `~/.config/clayclaude/state.json`, beside the config). Its registry file is removed only when the host confirms, at that moment, that its process is dead and the file sits in that account's `sessions/` folder. Running sessions are never touched.
 
@@ -212,7 +212,10 @@ A stopped row has **Clear**, and the stopped filter has **Clear all stopped**. A
 
 Long-press a session's name (or right-click it with a mouse) to give it a board nickname of up to 40 characters. This works on the board, in its focus view's title, or in an account's session list. **Save** (or Enter) keeps it; **Reset** goes back to the session's own name, which stays in the name's tooltip.
 
-The nickname is the board's alone: nothing is typed into the session, and Claude's own session name does not change. For a running session in tmux the sheet also offers **Also rename the tmux window** (off by default). That runs `tmux rename-window` on the session's host and nothing else; tmux cannot take a name with `#` or `\`, or one ending in `;`.
+The nickname is the board's alone: nothing is typed into the session, and Claude's own session name does not change. For a running session in tmux the sheet also offers two ticks, both off by default:
+
+- **Also rename the tmux window** runs `tmux rename-window` on the session's host and nothing else. tmux cannot take a name with `#` or `\`, or one ending in `;`.
+- **Also rename in Claude Code** types Claude Code's own `/rename <name>` command into the session, which renames it as Claude Code shows it (its input box, `/resume` and the terminal title). It runs no model turn. It is typed only under the same three checks as **Message**: Claude Code reports the session idle, its pane shows Claude's empty input box, and the pane is still that session's. It goes in as one checked bracketed paste. Enter is pressed only if the screen then shows exactly that command in the box and nothing new above it. If any check fails, nothing is renamed, not even on the board, and the sheet says why. **Reset** changes nothing in Claude Code. A session that has never had a prompt shows a hint in its input box that cannot be told from typed text, so it is refused until its first prompt.
 
 Nicknames are kept in the same `state.json` and go when the session is cleared. A **Name** given in **+ New** is passed to Claude as `--name` and becomes the session's name on the board.
 
@@ -237,16 +240,22 @@ When the rows would not fit the screen, the board switches to a grid of smaller 
 <details>
 <summary><b>Focus view</b></summary>
 
-Tapping a row or card opens a large character with the session's context ring, model, effort, recent token counts, tool count and running time. Below are a live feed of its tool calls, the last prompt and reply, and the files touched. **Answer**, **Open** and **Attach tmux** appear where they apply. Small characters for the other sessions run along the bottom, to switch to them. Back or **×** closes it.
+Tapping a row or card opens a large character with the session's context ring, model, effort, recent token counts, tool count and running time. Below are a live feed of its tool calls, the last prompt and reply, and the files touched. **Answer**, **Message**, **Open** and **Attach tmux** appear where they apply. Small characters for the other sessions run along the bottom, to switch to them. Back or **×** closes it.
 
 </details>
 
 <details>
 <summary><b>The answer sheet</b></summary>
 
-**Answer** on a session that needs you reads its tmux pane and shows the question as it stands. A menu shows its numbered choices as buttons. A free-text question gets a reply box and the quick-reply buttons (`ui.quickReplies`).
+**Answer** on a session that needs you reads its tmux pane and shows the question as it stands. A permission prompt (Claude asking to run a command, edit a file, use a tool or start on a plan) is shown with the whole screen exactly as the terminal draws it, and two buttons: **Yes** (allow once) and **No**. Yes is offered only when Claude's own first option is a plain "Yes"; approving a plan also changes the session's permission mode, so a plan gets **No** only and is approved on the PC. Other choices, such as "don't ask again", are made on the PC; the sheet offers **Open** and **Attach tmux** for that. A question menu shows its numbered choices as buttons, and a free-text question gets a reply box and the quick-reply buttons (`ui.quickReplies`).
 
-The answer is typed into the pane only if the prompt on screen is still the one you saw. If it has changed, nothing is sent and the sheet shows the new one. If the session has not moved on 10 seconds after an answer, the sheet offers **Open** and **Attach tmux** on the PC. **Confirm before sending** (`ui.confirmBeforeSend`) asks once more before each answer.
+Each answer is sent by one script on the session's host that first checks the screen is still the one you saw (for a reply, Claude's input box and the rows under it, since the spinner above it never holds still; Claude's blinking tool bullet is ignored; the host needs `sha256sum`, `shasum` or `openssl`); if it has changed, nothing is sent and the sheet shows the new prompt. A reply arrives as a single bracketed paste, which a permission prompt ignores, and its Enter is pressed only if Claude's input box still looks the same after it. A permission prompt itself is only ever answered by your own tap: **Yes** types `1` and **No** presses Escape.
+
+A reply sent while Claude is still working is queued, just like typing it at the PC: Claude Code holds it and the model reads it at its next pause. This leaves one rare gap, accepted on purpose: if Claude opens a permission prompt in the same few tens of milliseconds as the reply's Enter, the Enter can land on that prompt (Claude Code moves the keyboard to a new prompt before it draws it) and pick its highlighted option. On a tool's permission prompt that is "Yes" (allow this call once). On a plan approval, which Claude opens mid-turn, it is "Yes, and use auto mode": the plan is approved and the session's permission mode switches to auto. To rule it out, wait for Claude to finish before replying from the tablet. The same window applies when a prompt is answered at the PC at the same instant as a Yes or No tap on the tablet: the tablet's key can then land on the next prompt Claude opens, and Yes types 1, which on a plan approval is "Yes, and use auto mode". To rule that out, answer a prompt in one place only.
+
+Claude's startup questions (folder trust, external `CLAUDE.md` imports) are answered from the sheet only for a launch from **+ New** that is still starting. If the answer leads to another question, the sheet shows it; if the session has not moved on 10 seconds after an answer, the sheet offers **Open** and **Attach tmux** on the PC. **Confirm before sending** (`ui.confirmBeforeSend`) asks once more before each answer.
+
+**Message** on an asleep session (one that finished its turn) opens the same reply box and quick replies, to give it its next prompt. The text is typed, with Enter, only when three checks all pass: Claude Code itself reports the session idle (its last hook event is Stop, or without hooks its registry says idle; never with a permission or question pending, or while it works or starts), its pane shows Claude's empty input box at the bottom with nothing under it, and the pane is still that session's, in the foreground and not in copy mode or synchronize-panes. If any check fails, nothing is sent and the sheet says why. The text goes in as one bracketed paste by the same checked script as a reply, and is refused if the screen changed since it was read.
 
 </details>
 
@@ -447,7 +456,7 @@ The daemon then listens on every interface. Open `http://<address>:<port>/` on t
 clayclaude demo
 ```
 
-A board full of simulated sessions moving through every state, with usage meters, on `http://127.0.0.1:8421`. Nothing real is touched: no hosts, no credentials, and tapping Open, Attach, Answer or Start runs nothing. The default port is 8421, one above the daemon's 8420, so the demo runs alongside the daemon.
+A board full of simulated sessions moving through every state, with usage meters, on `http://127.0.0.1:8421`. Nothing real is touched: no hosts, no credentials, and tapping Open, Attach, Answer, Message or Start runs nothing. The default port is 8421, one above the daemon's 8420, so the demo runs alongside the daemon.
 
 | Option | What it does |
 |---|---|
@@ -481,7 +490,7 @@ The board can type answers into your sessions and start new ones, so treat acces
 - **LAN mode** (off by default) needs the token from `setup` on every request from another device. It is compared in constant time, never logged, and repeated wrong tries lock that address out for a while. The traffic is plain HTTP, so use it only on a network you trust.
 - **Never forward LAN traffic to `127.0.0.1`** (for example a `netsh interface portproxy` rule to `127.0.0.1` under WSL). The daemon would see such requests as local, and any client that writes `Host: localhost` would skip the token. Use WSL's mirrored networking, or forward to the WSL address instead.
 - **What is read on each host:** Claude Code's session files (`<configDir>/sessions/*.json`), the session transcripts under `<configDir>/projects`, the hook events file, and the process list (to tell live sessions from dead ones). For `oauth` meters and the launcher's model list, also `.credentials.json` and the account email in `.claude.json`. When you open the answer sheet, the session's tmux pane is captured.
-- **The only writes:** an `oauth` token refresh (to `.credentials.json`, with a `.bak` copy, and never when `refresh: false`). And the keystrokes of an answer you send, only if the prompt on screen is still the one you saw, and at most 4,000 characters. Starting a session from **+ New** creates a tmux window when you tap Start. The hooks and the hotkey script are written only by `setup`, after you confirm them.
+- **The only writes:** an `oauth` token refresh (to `.credentials.json`, with a `.bak` copy, and never when `refresh: false`). And the keystrokes of an answer or a message you send, or of a `/rename` you tick in the rename sheet, only if the screen is still the one that was checked, and at most 4,000 characters. Starting a session from **+ New** creates a tmux window when you tap Start. The hooks and the hotkey script are written only by `setup`, after you confirm them.
 - **The config** holds no credentials except the LAN token, and is written with mode 0600; `serve` warns if other users can read it. Keep it out of version control.
 
 ## Troubleshooting and FAQ

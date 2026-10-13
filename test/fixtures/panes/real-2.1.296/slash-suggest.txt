@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.296
+▝▜██████▀  Opus 5.5 with medium effort · Claude Max
+ ▝▝   ▝▝   /…/rename-stub · /rc
+
+
+❯ /rename t42 probe one
+  ⎿  Session renamed to: t42 probe one
+
+❯ /rename a "b" $(x) ; café #1 \ end
+  ⎿  Session renamed to: a "b" $(x) ; café #1 \ end
+
+❯ /rename 1234567890123456789012345678901234567890
+  ⎿  Session renamed to: 1234567890123456789012345678901234567890
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ❯ /rename                                 Rename the current conversation
+    /google-workspace                       Read this before the first Google Drive, Docs, Sheets
+                                            or Slides connector call whenever the task creates or…
+───────────────────────────────────────────────────────── 1234567890123456789012345678901234567890 ─
+❯ /renam
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  🤖 Opus 5.5 | 📁 rename-stub
+  ⏵⏵ auto mode on (shift+tab to cycle)

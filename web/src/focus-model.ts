@@ -1,13 +1,14 @@
 import type { SessionSummary } from '../../src/actions/types.js';
 import type { Session } from '../../src/types.js';
 import { formatAge } from './order.js';
+import { canMessage } from './row-actions.js';
 
 export interface FocusVM {
   key: string; name: string; meta: string; state: Session['state']; word: string;
   ctxPct: number | null; model: string; effort: string; tokensIn: string; tokensOut: string; toolCount: number | null; running: string;
   feed: { time: string; tool: string; target: string }[];
   lastPrompt: string; lastReply: string; files: string[];
-  canAnswer: boolean; canOpen: boolean; canAttach: boolean; offline: boolean;
+  canAnswer: boolean; canMessage: boolean; canOpen: boolean; canAttach: boolean; offline: boolean;
 }
 
 const WORD: Record<string, string> = { 'needs-you': 'NEEDS YOU', working: 'WORKING', asleep: 'ASLEEP', stopped: 'STOPPED', compacting: 'COMPACTING', limit: 'LIMIT' };
@@ -30,6 +31,7 @@ export function focusModel(s: Session, sum: SessionSummary | null, now: number, 
     feed: (sum?.tools ?? []).slice(-14).reverse().map((t) => ({ time: t.at ? fmtTime(t.at) : '--:--:--', tool: t.name, target: t.target })),
     lastPrompt: sum?.lastPrompt ?? '', lastReply: sum?.lastAssistantText ?? '', files: sum?.files ?? [],
     canAnswer: s.state === 'needs-you' && !!s.tmux && s.hostOnline,
+    canMessage: canMessage(s),
     canOpen: !!s.bridgeSessionId && s.hostOnline,
     canAttach: !!s.tmux && s.hostOnline,
     offline: !s.hostOnline,

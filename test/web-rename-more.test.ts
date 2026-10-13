@@ -200,3 +200,78 @@ describe('Also rename the tmux window', () => {
     expect(t.textContent).toContain('tmux window was not renamed');
   });
 });
+
+describe('Also rename in Claude Code (Task 42)', () => {
+  const ctick = () => sheet()!.querySelector<HTMLInputElement>('#rename-claude');
+  const tick = () => sheet()!.querySelector<HTMLInputElement>('#rename-tmux');
+  const name = (i: number) => root.querySelector<HTMLElement>(`.row[data-key="h:a:s${i}"] .name`)!;
+  it('is offered beside the tmux tick only for a running session in tmux, and is off by default', () => {
+    boot();
+    ctxmenu(name(0));
+    expect(ctick()).not.toBeNull();
+    expect(ctick()!.checked).toBe(false);
+    expect(sheet()!.textContent).toContain('Also rename in Claude Code');
+    sheet()!.querySelector<HTMLButtonElement>('[data-act="cancel"]')!.click();
+    ctxmenu(name(1));
+    expect(ctick()).toBeNull();
+  });
+  it('off: no claude flag; on: Save posts claude: true, with the tmux flag when that is ticked too', async () => {
+    boot();
+    ctxmenu(name(0));
+    field().value = 'one';
+    sheet()!.querySelector<HTMLButtonElement>('[data-act="save"]')!.click();
+    await flush();
+    ctxmenu(name(0));
+    ctick()!.click();
+    field().value = 'two';
+    sheet()!.querySelector<HTMLButtonElement>('[data-act="save"]')!.click();
+    await flush();
+    ctxmenu(name(0));
+    ctick()!.click();
+    tick()!.click();
+    field().value = 'three';
+    field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await flush();
+    expect(posted).toEqual([
+      { action: 'rename', sessionId: 'h:a:s0', name: 'one' },
+      { action: 'rename', sessionId: 'h:a:s0', name: 'two', claude: true },
+      { action: 'rename', sessionId: 'h:a:s0', name: 'three', tmux: true, claude: true },
+    ]);
+  });
+  it('ticked, the note says Claude Code takes the name too, and only while the session is idle', () => {
+    boot();
+    ctxmenu(name(0));
+    const note = () => sheet()!.querySelector<HTMLElement>('.rename-note')!.textContent!;
+    expect(note()).toContain('Only the board shows this name');
+    ctick()!.click();
+    expect(note()).toContain('/rename');
+    expect(note()).toMatch(/idle/);
+    ctick()!.click();
+    expect(note()).toContain('Only the board shows this name');
+  });
+  it('pressing it does not take the focus from the field', () => {
+    boot();
+    ctxmenu(name(0));
+    for (const el of [ctick()!, sheet()!.querySelector('.rename-claude')!]) {
+      expect(pe('pointerdown', el).defaultPrevented, el.tagName).toBe(true);
+      const md = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+      el.dispatchEvent(md);
+      expect(md.defaultPrevented, el.tagName).toBe(true);
+    }
+    ctick()!.click();
+    expect(ctick()!.checked).toBe(true);
+    expect(document.activeElement?.id).toBe('rename-text');
+  });
+  it('a refusal (the session is not idle) is shown in the sheet, which stays open', async () => {
+    boot();
+    reply = { ok: false, error: 'no_prompt', message: 'Not renamed in Claude Code: Claude is working in this session. Nothing was sent.' };
+    ctxmenu(name(0));
+    ctick()!.click();
+    sheet()!.querySelector<HTMLButtonElement>('[data-act="save"]')!.click();
+    await flush();
+    expect(sheet()).not.toBeNull();
+    const w = sheet()!.querySelector<HTMLElement>('.warn')!;
+    expect(w.hidden).toBe(false);
+    expect(w.textContent).toContain('Claude is working');
+  });
+});

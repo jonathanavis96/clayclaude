@@ -1,6 +1,6 @@
 import './overlay.css';
 import type { Session } from '../../src/types.js';
-import { openAnswerSheet } from './answer.js';
+import { openAnswerSheet, openMessageSheet } from './answer.js';
 import { sessionKeyAt, type BoardState } from './board.js';
 import type { ClayController, ClayPrefs } from './clay/index.js';
 import { newlyNeedsYou, needsYouKeys, visibleSessions, withoutBackground } from './filter.js';
@@ -56,12 +56,15 @@ export function initApp(ctx: AppCtx) {
     session: s, getSession: () => session(s.key), confirmBeforeSend: () => eff().confirmBeforeSend, quickReplies: () => eff().quickReplies, act,
   });
 
+  /** Task 43: a new message to an idle session. */
+  const message = (s: Session) => openMessageSheet({ session: s, confirmBeforeSend: () => eff().confirmBeforeSend, quickReplies: () => eff().quickReplies });
+
   /** The rename sheet for a session (Task 41), from the board, its focus view or the account popup (Task 42a). */
   const rename = (key: string) => { const s = session(key); return s ? openRenameSheet(s) : undefined; };
 
   const focus = (key: string) => openFocus({
     sessionKey: key, getState: ctx.getState, clay: ctx.clay, ttlMinutes: () => ctx.getState()?.cacheTtlMinutes ?? 60,
-    onAction: (a, s) => (a === 'answer' ? answer(s) : void act(a, s)),
+    onAction: (a, s) => (a === 'answer' ? answer(s) : a === 'message' ? message(s) : void act(a, s)),
     // Closing an overlay steps the browser history back asynchronously; open the next one after that settles.
     onSwitch: (k) => setTimeout(() => focus(k), 120),
     rename,
@@ -96,6 +99,8 @@ export function initApp(ctx: AppCtx) {
     if (all) { void clear({ action: 'clear-stopped' }, all); return; }
     const ans = t.closest<HTMLElement>('[data-act="answer"]');
     if (ans?.dataset.key) { const s = session(ans.dataset.key); if (s) answer(s); return; }
+    const msg = t.closest<HTMLElement>('[data-act="message"]');
+    if (msg?.dataset.key) { const s = session(msg.dataset.key); if (s) message(s); return; }
     const open = t.closest<HTMLElement>('[data-act="open"]');
     if (open?.dataset.key) { const s = session(open.dataset.key); if (s) void act('open', s); return; }
     // A strip row or a grid card (spec §5.1): both open the focus view.

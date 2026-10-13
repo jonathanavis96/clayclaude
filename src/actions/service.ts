@@ -4,6 +4,7 @@ import type { DismissedStore } from '../dismissed.js';
 import { cleanNickname, renameIn, type NicknameStore } from '../nicknames.js';
 import { buildSummary } from '../core/summary.js';
 import { SendGuard, answer, readPrompt } from './answer.js';
+import { message, renameInClaude } from './message.js';
 import { makeExec, type HostExec } from './exec.js';
 import { CapsCache, RepoLister, launch, launchOptions, type ProbeFn } from './launch.js';
 import { ModelCache } from './models.js';
@@ -122,6 +123,9 @@ export function createActionService(d: ServiceDeps): ActionApi & { publicConfig(
 
     answer: (req) => answer({ cfg: d.cfg, sessions: d.sessions, exec, quickReplies: () => d.cfg.ui.quickReplies, guard }, req),
 
+    // Task 43: the same guard as answers, so an answer and a message never go to one pane at once.
+    message: (req) => message({ cfg: d.cfg, sessions: d.sessions, exec, quickReplies: () => d.cfg.ui.quickReplies, guard }, req),
+
     launch: (req) => launch({ cfg: d.cfg, exec, caps, repos, models, attachNew: (host, ref, title) => attachRef({ host: host.id, name: title }, ref, title),
       onStarted: d.pending ? (l) => { d.pending!.store.add(l); d.pending!.changed(); } : undefined }, req),
 
@@ -173,20 +177,35 @@ export function createActionService(d: ServiceDeps): ActionApi & { publicConfig(
     async rename(id, name, o = {}) {
       if (!d.names) return fail('unsupported', 'renaming sessions is not available');
       const s = find(id);
-      if (!o.tmux || isFail(s)) return renameIn(d.names, s, name);
-      // Also rename the tmux window (Task 42a): everything is checked before the board name changes. The window takes
-      // the name the board ends up showing: the new one, or on Reset the session's own.
+      if ((!o.tmux && !o.claude) || isFail(s)) return renameIn(d.names, s, name);
+      // Also rename the tmux window (Task 42a) or in Claude Code (Task 42): everything is checked before the board name
+      // changes. Both take the name the board ends up showing: the new one, or on Reset the session's own.
       const host = d.cfg.hosts.find((h) => h.id === s.host);
-      const t = windowTarget(s, host);
-      if ('ok' in t) return t;
       let target = s.name;
       if (name !== null) { const c = cleanNickname(name); if (!c.ok) return fail('bad_request', c.message); target = c.name; }
-      const problem = tmuxNameProblem(target);
-      if (problem) return fail('bad_request', problem);
+      let win: TmuxRef | undefined;
+      if (o.tmux) {
+        const t = windowTarget(s, host);
+        if ('ok' in t) return t;
+        const problem = tmuxNameProblem(target);
+        if (problem) return fail('bad_request', problem);
+        win = t.ref;
+      }
+      // Claude Code takes a new name only (on Reset, or with its own name, it already has it), typed under the idle gate
+      // before the board name changes, so a refusal renames nothing.
+      let claude = false;
+      if (o.claude && target !== s.name) {
+        const c = await renameInClaude({ cfg: d.cfg, sessions: d.sessions, exec, quickReplies: () => d.cfg.ui.quickReplies, guard }, id, target);
+        if (!c.ok) return { ...c, message: `Not renamed in Claude Code: ${c.message} The board name was not changed either; untick "Also rename in Claude Code" to rename on the board only.` };
+        claude = true;
+      }
       const r = await renameIn(d.names, s, name);
-      if (!r.ok) return r;
-      const err = await renameWindow(exec, host!, t.ref, s.pid, target);
-      return err ? { ...r, message: `${r.message}. The tmux window was not renamed: ${err}`, tmuxError: err } : { ...r, message: `${r.message}, and its tmux window` };
+      if (!r.ok) return claude ? { ...r, message: `Renamed in Claude Code, but the board name was not saved: ${r.message}` } : r;
+      const also = claude ? ', also in Claude Code' : '';
+      if (!win) return { ...r, message: `${r.message}${also}` };
+      const err = await renameWindow(exec, host!, win, s.pid, target);
+      if (err) return { ...r, message: `${r.message}${also}. The tmux window was not renamed: ${err}`, tmuxError: err };
+      return { ...r, message: claude ? `${r.message}, in Claude Code and its tmux window` : `${r.message}, and its tmux window` };
     },
 
     /** What the settings panel may show. Never includes tokens or credential contents. */

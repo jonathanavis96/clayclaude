@@ -32,7 +32,9 @@ const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('clear'), sessionId: Id }),
   z.object({ action: z.literal('clear-stopped') }),
   // Cleaned and checked (1 to 40 characters, no direction override) by the action itself; this only bounds the body.
-  z.object({ action: z.literal('rename'), sessionId: Id, name: z.string().max(400).nullable(), tmux: z.boolean().optional() }),
+  z.object({ action: z.literal('rename'), sessionId: Id, name: z.string().max(400).nullable(), tmux: z.boolean().optional(), claude: z.boolean().optional() }),
+  // Task 43: cleaned and checked (one line, 1 to 4000 characters) by the action itself; this only bounds the body.
+  z.object({ action: z.literal('message'), sessionId: Id, text: z.string().max(20000) }),
   z.object({ action: z.literal('answer'), sessionId: Id, promptHash: z.string().min(1).max(64), choice: z.string().max(4).optional(), text: z.string().max(20000).optional() }),
   z.object({
     action: z.literal('launch'), account: z.string().min(1).max(100), repo: z.string().min(1).max(1000),
@@ -104,7 +106,8 @@ export function createActionRoutes(api: ActionApi, opts: RouteOptions): RouteHan
         case 'prompt': return sendResult(res, await api.readPrompt(b.sessionId)), true;
         case 'clear': return sendResult(res, await api.clear(b.sessionId)), true;
         case 'clear-stopped': return sendResult(res, await api.clearStopped()), true;
-        case 'rename': return sendResult(res, await api.rename(b.sessionId, b.name, { tmux: b.tmux === true })), true;
+        case 'rename': return sendResult(res, await api.rename(b.sessionId, b.name, { tmux: b.tmux === true, ...(b.claude === true ? { claude: true } : {}) })), true;
+        case 'message': return sendResult(res, await api.message({ sessionId: b.sessionId, text: b.text })), true;
         case 'launch': return sendResult(res, await api.launch({ account: b.account, repo: b.repo, options: b.options })), true;
         case 'answer':
           return sendResult(res, await api.answer(b.choice !== undefined

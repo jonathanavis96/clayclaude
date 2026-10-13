@@ -29,3 +29,43 @@ Notes:
 - WebFetch on this machine normally never prompts, because a user PreToolUse hook auto-allows it. That
   capture came from a session with the hook switched off.
 - No other MCP server prompted: context7 needed OAuth and exposed no tools, so the obsidian server was used.
+
+## Typed replies: bracketed paste, and Claude working (2026-10-13)
+
+A second real 2.1.296 session (120x40 pane, "manual" permission mode, a throwaway git folder; paths neutralised as
+above), used to check how a typed reply is delivered (answer.ts, SEND_PASTE_SCRIPT: `tmux load-buffer -b <name> -`
+then `tmux paste-buffer -p -d -b <name>`, so Claude receives it between ESC[200~ and ESC[201~).
+
+- `perm-bash-manual.txt`: a Bash prompt for `touch …/marker.txt`. Bracketed pastes of `2 please`, `2`, `1`, `3` and
+  `y` were delivered to it one after the other. None picked an option: the screen stayed byte-for-byte the same
+  (apart from the animated "●" bullet) and the command did not run (no marker file, no project settings file).
+  Control: the keystroke `4` (`send-keys -l 4`) picked option 4 at once ("Interrupted · What should Claude do
+  instead?"). So a reply that reaches a Select menu as a paste is ignored by it; as keystrokes it is an answer.
+- A bracketed paste into the idle input box drew the draft (`❯ Reply with only the word pong`); Enter sent it and
+  Claude answered.
+- `busy.txt`, `busy-later.txt`: Claude working, 250 ms apart. The spinner row changes every frame ("✶ Effecting… (2s
+  · ↓ 237 tokens · thinking)", then "✽ … 296 tokens · thought for 1s"); 2.1.296 shows no "esc to interrupt". The
+  input box and the rows under it do not change.
+- `busy-draft.txt`: a bracketed paste while Claude works: the draft is drawn in the input box.
+- `busy-queued.txt`: Enter then: Claude queues the message ("❯ Press up to edit queued messages", the message shown
+  above the spinner), and the model read and answered it after its current reply.
+
+## Renaming a running session (Task 42, 2026-10-13)
+
+A third real 2.1.296 session (100x40 pane, a throwaway folder on a private tmux socket; the path is neutralised to
+`/…/rename-stub`), used to find how Claude Code renames a running session. `claude --help` has only `-n, --name` at
+start; the running session has the built-in `/rename [name]` ("Rename the current conversation", alias `/name`).
+
+- `fresh-placeholder.txt`: the idle box of a session that has had no prompt yet, with Claude's hint `❯ Try "write a
+  test for <filepath>"`. Without colours it cannot be told from typed text, so it is not an empty box.
+- `rename-pasted.txt`: `/rename t42 probe one` as a bracketed paste: the draft is drawn in the box and nothing is drawn
+  above it (no suggestion list once the command has an argument).
+- `named-idle.txt`: after Enter: "⎿ Session renamed to: t42 probe one", the box's top rule ends in the name
+  (`──── t42 probe one ─`), the pane title becomes "✳ t42 probe one", and the registry file gets `name` and
+  `nameSource: "user"`. No hook event was written (no UserPromptSubmit, no Stop), and no model turn ran.
+- `named-idle-44.txt`, `named-idle-30.txt`: the same box in a 44- and a 30-column pane (a 40-character name): the
+  rule before the name shrinks to one dash, then the name is cut with "…" and only a space is left before it. The
+  prompt line is "❯", a no-break space, a space.
+- `slash-suggest.txt`: `/renam` pasted with no argument: Claude draws its slash-command suggestions above the box,
+  the first highlighted; Enter would pick it. The rename path presses Enter only if nothing new is above the box.
+- A name with `"`, `$(x)`, `;`, `#`, `\` and `café` was taken literally.

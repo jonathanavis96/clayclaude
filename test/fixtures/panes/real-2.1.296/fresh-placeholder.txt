@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.296
+▝▜██████▀  Opus 5.5 with medium effort · Claude Max
+ ▝▝   ▝▝   /…/rename-stub · /rc
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                                ◐ medium · /effort
+────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Try "write a test for <filepath>"
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  🤖 Opus 5.5 | 📁 rename-stub
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents

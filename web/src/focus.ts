@@ -13,8 +13,8 @@ export interface FocusCtx {
   getState(): BoardState | null;
   clay: ClayController;
   ttlMinutes(): number;
-  /** Button actions, handled by the app (answer sheet, open, attach). */
-  onAction(action: 'answer' | 'open' | 'attach', session: Session): void;
+  /** Button actions, handled by the app (answer sheet, message sheet, open, attach). */
+  onAction(action: 'answer' | 'message' | 'open' | 'attach', session: Session): void;
   onSwitch(key: string): void;
   /** Task 42a: a long-press or right-click on the title opens the rename sheet for this session (as on the board). */
   rename?(key: string): (() => void) | void;
@@ -79,7 +79,7 @@ export function openFocus(ctx: FocusCtx): () => void {
     const s = find(ctx.sessionKey);
     if (b.dataset.act === 'close') close();
     else if (b.dataset.act === 'focus' && b.dataset.key) { close(); ctx.onSwitch(b.dataset.key); }
-    else if (s && (b.dataset.act === 'answer' || b.dataset.act === 'open' || b.dataset.act === 'attach')) ctx.onAction(b.dataset.act, s);
+    else if (s && (b.dataset.act === 'answer' || b.dataset.act === 'message' || b.dataset.act === 'open' || b.dataset.act === 'attach')) ctx.onAction(b.dataset.act, s);
   });
   refresh(); void load();
   timer = window.setInterval(refresh, 1000);

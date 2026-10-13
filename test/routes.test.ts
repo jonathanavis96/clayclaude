@@ -15,6 +15,7 @@ const api: ActionApi = {
   repos: rec('repos', { ok: true, repos: [] }),
   summary: rec('summary', { ok: true, summary: { files: [], tools: [], toolCount: 0, tokensIn: 0, tokensOut: 0 } }),
   rename: rec('rename', { ok: true, message: 'Renamed', name: 'n' }),
+  message: rec('message', fail('no_prompt', 'Claude is working in this session. Nothing was sent.')),
 } as ActionApi;
 let srv: Server | undefined;
 afterEach(() => { srv?.close(); srv = undefined; calls.length = 0; });
@@ -92,6 +93,17 @@ describe('action routes', () => {
     t = 10_001;
     expect((await post()).status).toBe(200);
   });
+  // Task 43: a message to an idle session names the session and the text, nothing else.
+  it('message: passes on only the session and the text, typed and bounded; refuses anything else', async () => {
+    const { post } = await boot();
+    expect((await post({ action: 'message', sessionId: 'a', text: 'hi', keys: ['C-c'], pane: '%0', enter: false, tmux: 'x:@1.%1' })).status).toBe(422);
+    expect(calls.at(-1)).toEqual(['message', { sessionId: 'a', text: 'hi' }]);
+    for (const bad of [{ action: 'message', sessionId: 'a' }, { action: 'message', sessionId: 'a', text: 7 }, { action: 'message', text: 'hi' },
+      { action: 'message', sessionId: '', text: 'hi' }, { action: 'message', sessionId: 'a', text: 'x'.repeat(20_001) }])
+      expect((await post(bad)).status, JSON.stringify(bad)).toBe(400);
+    expect((await post({ action: 'message', sessionId: 'a', text: 'hi' }, { 'content-type': 'application/json' })).status).toBe(403);
+    expect(calls).toHaveLength(1);
+  });
   // Task 46: the permission mode and the bypass confirm, typed and bounded (the action itself checks the values).
   it('passes a permission mode and the bypass confirm through, typed; refuses wrong types', async () => {
     const { post } = await boot();
@@ -115,5 +127,15 @@ describe('action routes', () => {
       { action: 'rename', sessionId: 'a', name: 'n', tmux: 'yes' }])
       expect((await post(bad)).status, JSON.stringify(bad)).toBe(400);
     expect(calls).toHaveLength(3);
+  });
+  // Task 42: the rename sheet's "Also rename in Claude Code" tick is one more boolean, passed on only when true.
+  it('passes a rename claude flag through only when it is true; refuses a wrong type', async () => {
+    const { post } = await boot();
+    expect((await post({ action: 'rename', sessionId: 'a', name: 'n', claude: true, tmux: true })).status).toBe(200);
+    expect(calls.at(-1)).toEqual(['rename', 'a', 'n', { tmux: true, claude: true }]);
+    expect((await post({ action: 'rename', sessionId: 'a', name: 'n', claude: false })).status).toBe(200);
+    expect(calls.at(-1)).toEqual(['rename', 'a', 'n', { tmux: false }]);
+    expect((await post({ action: 'rename', sessionId: 'a', name: 'n', claude: 'yes' })).status).toBe(400);
+    expect(calls).toHaveLength(2);
   });
 });

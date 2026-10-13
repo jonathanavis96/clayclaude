@@ -7,8 +7,17 @@ export type ErrorCode =
 
 export interface PromptOption { key: string; label: string; selected: boolean; description?: string }
 
+/**
+ * permission: a Claude Code permission prompt (tool approval, plan approval…). The tablet offers only Yes (sends 1) and
+ * No (sends Escape): options are PERMISSION_OPTIONS when Claude's option 1 on screen is a plain "Yes", else
+ * PERMISSION_NO_ONLY; detail is the whole screen as the terminal shows it.
+ * menu: a menu that approves nothing: an AskUserQuestion menu (keys are its numbers) or a startup confirm dialog (trust).
+ * text: Claude's input box, positively recognised; the only kind that takes a typed reply.
+ */
+export type PromptKind = 'permission' | 'menu' | 'text' | 'none';
+
 export interface PromptView {
-  kind: 'menu' | 'text' | 'none';
+  kind: PromptKind;
   /** Changes whenever the prompt on screen changes. Echoed back with the answer. */
   hash: string;
   title: string;
@@ -17,10 +26,16 @@ export interface PromptView {
   options: PromptOption[];
   quickReplies: string[];
   /**
-   * Claude's folder-trust question (Task 40). Its options carry no numbers, so an option is picked by moving the
-   * cursor from the selected one with arrow keys and pressing Enter, never by typing its key.
+   * One of Claude's startup confirm dialogs: the folder-trust question (Task 40) or the external CLAUDE.md imports
+   * question. Its options carry no numbers, so an option is picked by moving the cursor from the selected one with arrow
+   * keys and pressing Enter, never by typing its key.
    */
   trust?: true;
+  /**
+   * text only: Claude is working (its spinner row on screen, or Claude Code reporting it). A typed reply is still sent:
+   * Claude Code queues it for the model's next pause (answer.ts, the answer race, covers a prompt appearing then).
+   */
+  busy?: true;
 }
 
 export type Fail = { ok: false; error: ErrorCode; message: string; prompt?: PromptView };
@@ -29,6 +44,9 @@ export type Result<T extends object = object> = ({ ok: true } & T) | Fail;
 export type AnswerRequest =
   | { sessionId: string; promptHash: string; choice: string; text?: undefined }
   | { sessionId: string; promptHash: string; text: string; choice?: undefined };
+
+/** Task 43: a new message to an idle session: the text and Enter, only through the idle gate (message.ts). */
+export interface MessageRequest { sessionId: string; text: string }
 
 export interface LaunchRequest {
   account: string;
@@ -78,6 +96,8 @@ export interface ActionApi {
   attach(sessionId: string): Promise<Result<{ message: string }>>;
   readPrompt(sessionId: string): Promise<Result<{ prompt: PromptView; lastAssistantText?: string; question?: string }>>;
   answer(req: AnswerRequest): Promise<Result<{ sent: string }>>;
+  /** Task 43: type a new message and Enter into an idle session, only through the idle gate (message.ts). */
+  message(req: MessageRequest): Promise<Result<{ sent: string }>>;
   launch(req: LaunchRequest): Promise<Result<{ message: string; target?: string }>>;
   launchOptions(): Promise<LaunchOptions>;
   repos(accountId: string): Promise<Result<{ repos: RepoEntry[] }>>;
@@ -87,12 +107,13 @@ export interface ActionApi {
   /** `clear` for every stopped session. */
   clearStopped(): Promise<Result<{ message: string; cleared: number; removed: number }>>;
   /**
-   * Sets the session's board nickname (Task 41), or clears it with null (back to the derived name). It never sends keys
-   * to the session and never renames Claude's session name. With `tmux` (Task 42a, off unless asked) it also renames
+   * Sets the session's board nickname (Task 41), or clears it with null (back to the derived name). Unless asked with
+   * `claude` it never sends keys to the session and never renames Claude's session name. With `tmux` (Task 42a, off unless asked) it also renames
    * the session's tmux window to the resulting name with `tmux rename-window`; `tmuxError` says why that failed, if it did
-   * (the board name is saved either way).
+   * (the board name is saved either way). With `claude` (Task 42, off unless asked) it first types `/rename <name>`
+   * into the session, only under the idle gate (message.ts, renameInClaude); when that is refused nothing is renamed.
    */
-  rename(sessionId: string, name: string | null, o?: { tmux?: boolean }): Promise<Result<{ message: string; name: string; tmuxError?: string }>>;
+  rename(sessionId: string, name: string | null, o?: { tmux?: boolean; claude?: boolean }): Promise<Result<{ message: string; name: string; tmuxError?: string }>>;
 }
 
 export const fail = (error: ErrorCode, message: string, prompt?: PromptView): Fail =>

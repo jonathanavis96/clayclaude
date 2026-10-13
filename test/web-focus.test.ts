@@ -20,6 +20,13 @@ describe('focus model', () => {
     expect(focusModel(session({ bridgeSessionId: undefined }), null, NOW, 'S')).toMatchObject({ canOpen: false });
     expect(focusModel(session({ hostOnline: false }), null, NOW, 'S')).toMatchObject({ canAnswer: false, canOpen: false, canAttach: false, offline: true });
   });
+  // Task 43: Message on an idle session in tmux, beside Open and Attach, as Answer is on one that needs you.
+  it('offers Message only for an asleep session in tmux on an online host, not while starting', () => {
+    expect(focusModel(session({ state: 'asleep' }), null, NOW, 'S')).toMatchObject({ canMessage: true, canAnswer: false });
+    expect(focusModel(session(), null, NOW, 'S')).toMatchObject({ canMessage: false });
+    for (const o of [{ state: 'working' }, { state: 'asleep', tmux: undefined }, { state: 'asleep', hostOnline: false }, { state: 'asleep', starting: true }, { state: 'stopped' }])
+      expect(focusModel(session(o), null, NOW, 'S'), JSON.stringify(o)).toMatchObject({ canMessage: false });
+  });
   it('formats times and token counts', () => {
     expect(fmtTime(new Date(2026, 0, 1, 3, 4, 5).getTime())).toBe('03:04:05');
     expect([undefined, 950, 1500, 2_400_000].map(fmtTokens)).toEqual(['–', '950', '1.5k', '2.4M']);
@@ -31,6 +38,8 @@ describe('focus view html', () => {
   it('renders buttons per capability and escapes the feed', () => {
     expect(buttonsHtml(v)).toContain('data-act="answer"');
     expect(buttonsHtml({ ...v, canAnswer: false, canOpen: false })).not.toContain('answer');
+    expect(buttonsHtml(v)).not.toContain('data-act="message"');
+    expect(buttonsHtml({ ...v, canAnswer: false, canMessage: true })).toContain('<button class="primary" data-act="message">Message</button>');
     expect(feedHtml(v)).toContain('echo &lt;3&gt;');
     expect(feedHtml({ ...v, feed: [] })).toContain('No tool calls yet');
   });

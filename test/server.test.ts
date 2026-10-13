@@ -183,8 +183,16 @@ describe('websocket clients that stop listening', () => {
     silent.on('data', () => {}); // reads, but never pongs
     const live = new WebSocket(`ws://127.0.0.1:${port}/ws`);
     await new Promise((r) => live.once('message', r));
-    for (let i = 0; i < 3; i++) { vi.advanceTimersByTime(30_000); await new Promise((r) => setTimeout(r, 50)); }
-    expect(await closedWithin(silent, 1000)).toBe(true);
+    for (let i = 0; i < 3; i++) {
+      const pinged = new Promise((r) => live.once('ping', r));
+      vi.advanceTimersByTime(30_000);
+      await pinged; // ws has already written its automatic pong
+      // A ping of our own sent behind that pong: its answer means the server has read the pong, without timing anything.
+      const ponged = new Promise((r) => live.once('pong', r));
+      live.ping();
+      await ponged;
+    }
+    expect(await closedWithin(silent, 5000)).toBe(true);
     expect(live.readyState).toBe(WebSocket.OPEN);
     live.close();
   }, 20_000);

@@ -32,10 +32,11 @@ describe('demo over http', () => {
     expect((await (await fetch(base + '/api/meta')).json()).mode).toBe('demo');
     const key = state.sessions.find((s: any) => s.name === 'tidepool-ui').key;
     const p: any = await (await post({ action: 'prompt', sessionId: key })).json();
-    expect(p.prompt.kind).toBe('menu');
-    const a = await post({ action: 'answer', sessionId: key, promptHash: p.prompt.hash, choice: '1' });
+    expect(p.prompt.kind).toBe('permission');
+    expect((await post({ action: 'answer', sessionId: key, promptHash: p.prompt.hash, choice: '1' })).status).toBe(400);
+    const a = await post({ action: 'answer', sessionId: key, promptHash: p.prompt.hash, choice: 'yes' });
     expect(a.status).toBe(200);
-    expect((await post({ action: 'answer', sessionId: key, promptHash: p.prompt.hash, choice: '1' })).status).toBe(422);
+    expect((await post({ action: 'answer', sessionId: key, promptHash: p.prompt.hash, choice: 'yes' })).status).toBe(422);
   });
   it('pushes updates over the websocket', async () => {
     const { port } = await boot();

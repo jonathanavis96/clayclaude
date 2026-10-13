@@ -19,6 +19,15 @@ h2, h3, h4 { margin: 0; } h4 { font: 600 12px var(--mono); color: var(--muted); 
 .sheet-body .last { margin: 0 0 1vh; padding-left: 1vw; border-left: 3px solid var(--needs); color: var(--muted); max-height: 14vh; overflow: auto; }
 .sheet-body .detail { font: clamp(12px, 2.2vh, 15px) var(--mono); background: #0e1014; padding: 1vh 1vw; border-radius: 8px; max-height: 16vh; overflow: auto; white-space: pre-wrap; }
 .choices { display: grid; gap: 1.2vh; }
+/* Text from the session's screen is laid out as a terminal lays it out: left to right in the order it was written, never
+   reordered by the bidi algorithm (invisible format characters are already shown as markers, html.ts screenText). */
+.sheet-body :is(.detail, .ask, .last, .choice span, .choice small, p b) { unicode-bidi: bidi-override; direction: ltr; }
+/* A permission prompt: the screen as the terminal draws it (monospace, long lines wrapped, never cut), then Yes / No. */
+.sheet-body .detail.verbatim { font-size: clamp(11px, 2vh, 14px); max-height: 46vh; overflow-wrap: anywhere; }
+.choices.perm { grid-template-columns: 1fr 1fr; margin-top: 1.4vh; }
+.choices.perm.one { grid-template-columns: 1fr; }   /* No only: Claude's option 1 is not a plain "Yes" */
+.choices.perm .choice { justify-content: center; text-align: center; font-weight: 700; }
+.sheet-body .pc-note { margin: 1vh 0 0; font-size: clamp(13px, 2.2vh, 16px); }
 .choice { display: flex; gap: 1.2vw; align-items: center; text-align: left; min-height: clamp(52px, 10vh, 80px); font-size: clamp(16px, 3vh, 24px); }
 .choice.sel { border-color: var(--needs); }
 .choice .n { font: 700 1.2em var(--mono); color: var(--needs); }
@@ -33,9 +42,12 @@ h2, h3, h4 { margin: 0; } h4 { font: 600 12px var(--mono); color: var(--muted); 
 .rename-sheet .sheet-head .muted { flex: none; font-size: .7em; }
 .rename-sheet p { margin: 1vh 0 0; overflow-wrap: anywhere; }
 #overlays.short .rename-sheet p.muted { display: none; }   /* keyboard up in a tab leaves ~160 px: the field and its buttons */
-/* Task 42a: "Also rename the tmux window", on the buttons' line (it wraps under them on a narrow sheet) */
-.rename-tmux { display: flex; align-items: center; gap: .5em; min-height: 44px; margin-left: auto; color: var(--muted); font-size: clamp(13px, 2.4vh, 16px); }
-.rename-tmux input { width: 22px; height: 22px; margin: 0; flex: none; }
+/* Task 42a: "Also rename the tmux window", and Task 42: "Also rename in Claude Code", together on the buttons' line, at
+   its right (on a narrow sheet they wrap under the buttons together, still at the right) */
+.rename-ticks { display: flex; flex-wrap: wrap; justify-content: flex-end; column-gap: 1.4em; margin-left: auto; }
+.rename-tick { display: flex; align-items: center; gap: .5em; min-height: 44px; color: var(--muted); font-size: clamp(13px, 2.4vh, 16px); }
+.rename-tick input { width: 22px; height: 22px; margin: 0; flex: none; }
+.rename-note code { font: .95em var(--mono); }
 /* A long-press on the focus view's title or on a name in the account popup opens the rename sheet: no text selection or callout */
 .focus-panel .who h2, .acct-sessions .mini span { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 

@@ -12,6 +12,9 @@ import { Collector } from '../src/collector.js';
 import type { Session } from '../src/types.js';
 import { killOwn, testSessionName } from './helpers/tmux.js';
 
+/** A capture's status line carries the screen's SHA-256 (answer.ts, CAPTURE_SCRIPT). */
+const SHA = '0'.repeat(64);
+
 // Task 40: a session started with + New in a folder the account never trusted stops at Claude's trust question
 // before it writes its registry file. The daemon shows the launch as a pending row and lets the tablet answer it.
 
@@ -36,7 +39,7 @@ function fakeExec(screen: () => string) {
 
 describe('PendingLaunches', () => {
   it('shows a launch as a starting row named after the folder until something else is known', () => {
-    const p = new PendingLaunches({ cfg, exec: fakeExec(() => 'OK\n').exec, now: () => NOW });
+    const p = new PendingLaunches({ cfg, exec: fakeExec(() => `OK ${SHA}\n`).exec, now: () => NOW });
     p.add(launch());
     const [s] = p.sessions();
     expect(s).toMatchObject({ host: 'local', account: 'me', name: 'harbor-notes', cwd: '/home/demo/code/harbor-notes', tmux: 'work:@3.%7', pid: 4242,
@@ -46,7 +49,7 @@ describe('PendingLaunches', () => {
   });
 
   it('turns the row into NEEDS YOU with the dialog\'s question while the pane shows the trust question, and back when it goes', async () => {
-    let screen = `OK\n${TRUST}`;
+    let screen = `OK ${SHA}\n${TRUST}`;
     let t = NOW;
     const f = fakeExec(() => screen);
     const p = new PendingLaunches({ cfg, exec: f.exec, now: () => t });
@@ -60,14 +63,23 @@ describe('PendingLaunches', () => {
     t += 2000;
     await p.refresh([]);
     expect(p.sessions()[0].stateSince).toBe(NOW + 2000);   // still the same question: its age keeps counting
-    screen = 'OK\n Starting…\n';
+    screen = `OK ${SHA}\n Starting…\n`;
     await p.refresh([]);
     expect(p.sessions()[0]).toMatchObject({ state: 'working', starting: true });
     expect(p.sessions()[0].question).toBeUndefined();
   });
 
+  // The external CLAUDE.md imports dialog (2.1.296) used to be titled with the trust question: the "." in "CLAUDE.md"
+  // stopped the question pattern.
+  it('titles the external-imports dialog with its own question', async () => {
+    const p = new PendingLaunches({ cfg, exec: fakeExec(() => `OK ${SHA}\n${readFileSync(fx('panes/imports-dialog.txt'), 'utf8')}`).exec, now: () => NOW });
+    p.add(launch());
+    await p.refresh([]);
+    expect(p.sessions()[0]).toMatchObject({ state: 'needs-you', starting: true, question: 'Allow external CLAUDE.md file imports?' });
+  });
+
   it('is replaced once Claude registers a session for that pane (by tmux pane or by pid)', async () => {
-    const p = new PendingLaunches({ cfg, exec: fakeExec(() => `OK\n${TRUST}`).exec, now: () => NOW });
+    const p = new PendingLaunches({ cfg, exec: fakeExec(() => `OK ${SHA}\n${TRUST}`).exec, now: () => NOW });
     p.add(launch());
     p.add(launch({ target: 'work:@4.%8', pid: 5151, name: 'other' }));
     const real = (o: Partial<Session>) => ({ key: 'local:me:abc', host: 'local', account: 'me', sessionId: 'abc', live: true, state: 'working', pid: 1, ...o }) as Session;
@@ -82,7 +94,7 @@ describe('PendingLaunches', () => {
 
   it('Task 42a: a launch named in + New shows that name, and hands it on to the session Claude registers for it', async () => {
     const handed: [string | undefined, string][] = [];
-    const p = new PendingLaunches({ cfg, exec: fakeExec(() => 'OK\n').exec, now: () => NOW, onRegistered: (l, s) => handed.push([l.nickname, s.key]) });
+    const p = new PendingLaunches({ cfg, exec: fakeExec(() => `OK ${SHA}\n`).exec, now: () => NOW, onRegistered: (l, s) => handed.push([l.nickname, s.key]) });
     p.add(launch({ name: 'api work', nickname: 'api work' }));
     p.add(launch({ target: 'work:@4.%8', pid: 5151 }));
     expect(p.sessions().map((s) => s.name)).toEqual(['api work', 'harbor-notes']);
@@ -113,7 +125,7 @@ describe('PendingLaunches', () => {
 
   it('gives up after about ten minutes, even if the question is still waiting', async () => {
     let t = NOW;
-    const p = new PendingLaunches({ cfg, exec: fakeExec(() => `OK\n${TRUST}`).exec, now: () => t });
+    const p = new PendingLaunches({ cfg, exec: fakeExec(() => `OK ${SHA}\n${TRUST}`).exec, now: () => t });
     p.add(launch());
     t = NOW + PENDING_MAX_MS - 1;
     await p.refresh([]);
@@ -125,7 +137,7 @@ describe('PendingLaunches', () => {
   });
 
   it('only takes a launch that tmux reported: a target that is not a pane reference is ignored', () => {
-    const p = new PendingLaunches({ cfg, exec: fakeExec(() => 'OK\n').exec, now: () => NOW });
+    const p = new PendingLaunches({ cfg, exec: fakeExec(() => `OK ${SHA}\n`).exec, now: () => NOW });
     p.add(launch({ target: 'not a pane' }));
     p.add(launch({ host: 'nowhere' }));
     p.add(launch({ pid: 0 }));
@@ -135,7 +147,7 @@ describe('PendingLaunches', () => {
 
 describe('Start → pending row', () => {
   it('a successful Start adds the pending row at once and tells the board', async () => {
-    const pending = new PendingLaunches({ cfg, exec: fakeExec(() => 'OK\n').exec, now: () => NOW });
+    const pending = new PendingLaunches({ cfg, exec: fakeExec(() => `OK ${SHA}\n`).exec, now: () => NOW });
     let changed = 0;
     const probe = async (_h: unknown, req: any) => req.mode === 'cli' ? { ok: true, help: '  --model <m>  x\n', version: '9' } : { ok: true, repos: [{ path: '/home/demo/code/harbor-notes', name: 'harbor-notes', lastUsedMs: 1 }] };
     const exec: HostExec = async () => ({ code: 0, stdout: 'work:@3.%7 4242\n', stderr: '' });
@@ -147,7 +159,7 @@ describe('Start → pending row', () => {
   });
 
   it('a failed Start adds nothing', async () => {
-    const pending = new PendingLaunches({ cfg, exec: fakeExec(() => 'OK\n').exec, now: () => NOW });
+    const pending = new PendingLaunches({ cfg, exec: fakeExec(() => `OK ${SHA}\n`).exec, now: () => NOW });
     const probe = async (_h: unknown, req: any) => req.mode === 'cli' ? { ok: true, help: '', version: '9' } : { ok: true, repos: [{ path: '/r', name: 'r', lastUsedMs: 1 }] };
     const exec: HostExec = async () => ({ code: 1, stdout: '', stderr: 'tmux: no server' });
     const svc = createActionService({ cfg, sessions: () => [], probe, exec, pending: { store: pending, changed: () => {} } });
@@ -156,7 +168,7 @@ describe('Start → pending row', () => {
   });
 
   it('the collector lists the pending row, then swaps it for the registered session', async () => {
-    const pending = new PendingLaunches({ cfg, exec: fakeExec(() => `OK\n${TRUST}`).exec, now: () => NOW });
+    const pending = new PendingLaunches({ cfg, exec: fakeExec(() => `OK ${SHA}\n${TRUST}`).exec, now: () => NOW });
     let regs: object[] = [];
     const snap = (dir: string, r: object[]) => ({ ok: true, nowMs: NOW, dirs: [{ configDir: dir, registries: r, events: [] }] });
     const c = new Collector(cfg, { now: () => NOW, pending, probe: async (h) => h.id === 'local' ? snap('/c/me', regs) : snap('~/.claude-w', []) });

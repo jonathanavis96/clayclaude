@@ -107,6 +107,8 @@ export function sessionAt(def: DemoDef, virtualMin: number, nowMs: number, cache
     lastAssistantAt, cacheExpiresAt: lastAssistantAt + cacheTtlMinutes * 60_000,
     overContext: contextPct >= 85, hostOnline: true, lastSeen: nowMs,
     ...(def.starting ? { starting: true as const } : {}),
+    // Task 43: the demo plays Claude Code reporting every asleep session idle (its hooks' last event a Stop).
+    ...(state === 'asleep' && !def.starting ? { idle: true as const } : {}),
   };
 }
 

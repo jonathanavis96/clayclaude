@@ -27,6 +27,8 @@ export function parseEvents(lines: string[]): HookEvent[] {
 }
 
 const IDLE_NOTE = /waiting for your input/i;
+/** Claude Code's permission Notification: "Claude needs your permission to use <tool>". */
+const PERMISSION_NOTE = /needs your permission/i;
 
 export function contextWindowFor(model: string | undefined, windows: Record<string, number> & { default: number }): number {
   if (!model) return windows.default;
@@ -99,6 +101,36 @@ export function deriveSession(i: DeriveInput, now: number): Session | null {
     state = 'asleep'; stateSince = steady;
   }
 
+  // A pending permission, from what Claude Code itself writes (never the screen, which the model can shape): its registry
+  // waits on a tool's approval (waitingFor is "input needed" for AskUserQuestion and MCP input, "dialog open" for a dialog
+  // the user opened; anything else, or nothing, counts), its permission Notification has not been followed by any later
+  // event or an answer, or (older versions) a tool call is unresolved while it reports idle. The answer sheet then
+  // offers only Yes / No.
+  // Claude Code 2.1.296 also sends "Claude needs your permission" 6 s into an AskUserQuestion menu: that note is not a
+  // permission while the registry says it waits for input, or the tool waiting on the user is AskUserQuestion.
+  const askPending = d.waitingFor === 'input needed' || pendingTool?.name === 'AskUserQuestion';
+  const permNote = askPending ? undefined : mine.filter((e) => e.event === 'Notification' && PERMISSION_NOTE.test(e.message ?? '')).at(-1);
+  const permission = i.reg.live && (
+    (d.status === 'waiting' && d.waitingFor !== 'input needed' && d.waitingFor !== 'dialog open')
+    || (permNote !== undefined && !answered(permNote.ts) && !mine.some((e) => e.ts > permNote.ts))
+    || (pendingTool !== undefined && d.status === 'idle' && !t.askQuestion));
+
+  // Claude working, from what Claude Code itself writes (pane.ts, PaneSignals.busy): its registry status, or for an
+  // older Claude Code that writes none, the state derived above.
+  const busy = i.reg.live && (d.status === 'busy' || state === 'compacting' || (d.status === undefined && state === 'working'));
+
+  // Idle and waiting for a new prompt (Session.idle), from what Claude Code itself writes: its hook events when it sent
+  // any for this process (the last one Stop, or SessionStart with nothing after it; the idle "waiting for your input"
+  // note follows every finished turn and is not counted), with no prompt in the transcript since and no other registry
+  // status; without hook events, its registry status. A permission or question Notification, PreCompact, SessionEnd or a
+  // UserPromptSubmit last is not idle.
+  const relevant = mine.filter((e) => !(e.event === 'Notification' && IDLE_NOTE.test(e.message ?? '')));
+  const lastEvent = [...relevant].sort((a, b) => a.ts - b.ts).at(-1);
+  const idleSignal = lastEvent
+    ? (lastEvent.event === 'Stop' || lastEvent.event === 'SessionStart') && after(lastEvent.ts, t.lastUserAt) && (d.status === undefined || d.status === 'idle')
+    : d.status === 'idle';
+  const idle = i.reg.live && state === 'asleep' && !permission && !busy && idleSignal;
+
   // Transcripts never carry the "[1m]" suffix, so a session seen past its configured window (now, or before a
   // compaction still in the tail) must be on the 1M one.
   const configured = contextWindowFor(t.model, i.contextWindows);
@@ -118,6 +150,9 @@ export function deriveSession(i: DeriveInput, now: number): Session | null {
     overContext: (contextPct ?? 0) >= 85,
     hostOnline: i.hostOnline, lastSeen: i.lastSeen,
     ...(isBackground(d.entrypoint, i.reg.headless) && { background: true as const }),
+    ...(permission ? { permission: true as const } : {}),
+    ...(busy ? { busy: true as const } : {}),
+    ...(idle ? { idle: true as const } : {}),
   };
 }
 

@@ -164,3 +164,119 @@ describe('deriveSession: a resumed session (new process, same session id)', () =
     expect(state(input({ transcript: [bash], data: started }))).toBe('asleep');
   });
 });
+
+describe('deriveSession: a pending permission, reported by Claude Code itself', () => {
+  const PERM = 'Claude needs your permission to use Bash';
+  const note = (msAgo: number, message = PERM) => ({ event: 'Notification', sessionId: 's', ts: NOW - msAgo, message });
+  const perm = (i: DeriveInput) => deriveSession(i, NOW)!.permission;
+  it('the registry waits on a permission prompt (or on anything but input or a dialog the user opened)', () => {
+    expect(perm(input({ data: { status: 'waiting', waitingFor: 'permission prompt', statusUpdatedAt: NOW - 5000 } }))).toBe(true);
+    expect(perm(input({ data: { status: 'waiting', waitingFor: 'sandbox request', statusUpdatedAt: NOW - 5000 } }))).toBe(true);
+    expect(perm(input({ data: { status: 'waiting', statusUpdatedAt: NOW - 5000 } }))).toBe(true);
+    expect(perm(input({ data: { status: 'waiting', waitingFor: 'input needed', statusUpdatedAt: NOW - 5000 } }))).toBeUndefined();
+    expect(perm(input({ data: { status: 'waiting', waitingFor: 'dialog open', statusUpdatedAt: NOW - 5000 } }))).toBeUndefined();
+    expect(perm(input({ data: { status: 'busy' } }))).toBeUndefined();
+    expect(perm(input())).toBeUndefined();
+  });
+  it('a "needs your permission" Notification not yet followed by a later event or an answer', () => {
+    expect(perm(input({ events: [note(1000)] }))).toBe(true);
+    expect(perm(input({ events: [note(1000), { event: 'Stop', sessionId: 's', ts: NOW - 500 }] }))).toBeUndefined();
+    expect(perm(input({ events: [note(1000), note(500, 'Claude is waiting for your input')] }))).toBeUndefined();
+    expect(perm(input({ events: [note(1000)], data: { status: 'busy', statusUpdatedAt: NOW - 500 } }))).toBeUndefined();
+    const user = J({ type: 'user', timestamp: iso(500), message: { content: [{ type: 'tool_result', tool_use_id: 't', content: 'ok' }] } });
+    expect(perm(input({ events: [note(1000)], transcript: [asst(600_000), user] }))).toBeUndefined();
+    // Another session's, one from before this process started, or another kind of notification: not a permission.
+    expect(perm(input({ events: [{ ...note(1000), sessionId: 'other' }] }))).toBeUndefined();
+    expect(perm(input({ events: [note(4000_000)] }))).toBeUndefined();
+    expect(perm(input({ events: [note(1000, 'Claude Code needs your input')] }))).toBeUndefined();
+  });
+  it('an unresolved tool call while the registry says idle (older Claude Code)', () => {
+    const tool = asst(30_000, [{ type: 'tool_use', id: 't', name: 'Bash', input: { command: 'rm -rf dist' } }]);
+    expect(perm(input({ transcript: [tool] }))).toBe(true);
+    expect(perm(input({ transcript: [tool], data: { status: 'busy' } }))).toBeUndefined();
+  });
+  it('a stopped session has none', () => {
+    expect(perm(input({ live: false, events: [note(1000)], data: { status: 'waiting', waitingFor: 'permission prompt' } }))).toBeUndefined();
+  });
+  // Claude Code 2.1.296 sends "Claude needs your permission" 6 s into an AskUserQuestion menu too.
+  it('the "needs your permission" note sent for an AskUserQuestion menu is not a permission', () => {
+    const ask = asst(8000, [{ type: 'tool_use', id: 't', name: 'AskUserQuestion', input: { questions: [{ question: 'Which colour should the label be?', options: [{ label: 'Red' }, { label: 'Green' }] }] } }]);
+    const s = deriveSession(input({ transcript: [ask], events: [note(2000, 'Claude needs your permission')], data: { status: 'waiting', waitingFor: 'input needed', statusUpdatedAt: NOW - 8000 } }), NOW)!;
+    expect(s.state).toBe('needs-you');
+    expect(s.permission).toBeUndefined();
+    // Either signal alone: the registry waits for input, or the tool waiting on the user is AskUserQuestion.
+    expect(perm(input({ events: [note(2000)], data: { status: 'waiting', waitingFor: 'input needed' } }))).toBeUndefined();
+    expect(perm(input({ transcript: [ask], events: [note(2000)] }))).toBeUndefined();
+    // A tool approval still is, by the note alone or by the registry.
+    const bash = asst(8000, [{ type: 'tool_use', id: 't', name: 'Bash', input: { command: 'rm -rf dist' } }]);
+    expect(perm(input({ transcript: [bash], events: [note(2000)] }))).toBe(true);
+    expect(perm(input({ transcript: [ask], events: [note(2000)], data: { status: 'waiting', waitingFor: 'permission prompt' } }))).toBe(true);
+  });
+});
+
+describe('deriveSession: Claude working, reported by Claude Code itself', () => {
+  const busy = (i: DeriveInput) => deriveSession(i, NOW)!.busy;
+  it('the registry status is busy, or it is compacting', () => {
+    expect(busy(input({ data: { status: 'busy', statusUpdatedAt: NOW - 1000 } }))).toBe(true);
+    expect(busy(input({ events: [{ event: 'PreCompact', sessionId: 's', ts: NOW - 1000 }] }))).toBe(true);
+    expect(busy(input())).toBeUndefined();
+    expect(busy(input({ data: { status: 'waiting', waitingFor: 'input needed' } }))).toBeUndefined();
+    expect(busy(input({ live: false, data: { status: 'busy' } }))).toBeUndefined();
+  });
+  it('an older Claude Code that writes no status: its derived state', () => {
+    expect(busy(input({ transcript: [asst(2000)], data: { status: undefined } }))).toBe(true);
+    expect(busy(input({ transcript: [asst(600_000)], data: { status: undefined } }))).toBeUndefined();
+    // With a status, a recent transcript entry alone is not Claude working (a question it has just finished asking).
+    expect(busy(input({ transcript: [asst(2000)] }))).toBeUndefined();
+  });
+});
+
+/*
+ * Task 43 / 42, the idle gate's first condition: Claude Code itself (never the screen) says the session finished its turn
+ * and waits for a new prompt. With hooks: the session's last event is Stop, or SessionStart with nothing after it (an
+ * idle "waiting for your input" note does not count, it follows every finished turn), and no prompt in the transcript
+ * since. Without hook events for the session: its registry status is idle. Never while it needs you, works, compacts or
+ * has a permission pending.
+ */
+describe('deriveSession: idle and waiting for a new prompt, reported by Claude Code itself', () => {
+  const ev = (event: string, msAgo: number, message?: string) => ({ event, sessionId: 's', ts: NOW - msAgo, ...(message ? { message } : {}) });
+  const idle = (i: DeriveInput) => deriveSession(i, NOW)!.idle;
+  const prompt = (msAgo: number) => J({ type: 'user', timestamp: iso(msAgo), message: { content: 'next task please' } });
+  it('hooks: the last event is Stop, or SessionStart with nothing after it', () => {
+    expect(idle(input({ events: [ev('SessionStart', 3000_000), ev('Stop', 590_000)] }))).toBe(true);
+    expect(idle(input({ events: [ev('Stop', 590_000), ev('Notification', 580_000, 'Claude is waiting for your input')] }))).toBe(true);
+    expect(idle(input({ events: [ev('SessionStart', 3000_000)] }))).toBe(true);
+    // Another session's events and events from before this process started are not this session's.
+    expect(idle(input({ events: [ev('Stop', 590_000), { ...ev('Notification', 1000, 'Claude needs your permission to use Bash'), sessionId: 'other' }] }))).toBe(true);
+  });
+  it('hooks: never when the last event is a permission or question Notification, PreCompact or SessionEnd', () => {
+    expect(idle(input({ events: [ev('Stop', 590_000), ev('Notification', 1000, 'Claude needs your permission to use Bash')] }))).toBeUndefined();
+    expect(idle(input({ events: [ev('Stop', 590_000), ev('Notification', 1000, 'Claude Code needs your input')] }))).toBeUndefined();
+    expect(idle(input({ events: [ev('Stop', 590_000), ev('PreCompact', 1000)] }))).toBeUndefined();
+    expect(idle(input({ events: [ev('Stop', 590_000), ev('SessionEnd', 1000)] }))).toBeUndefined();
+    expect(idle(input({ events: [ev('SessionStart', 590_000), ev('UserPromptSubmit', 1000)] }))).toBeUndefined();
+  });
+  it('hooks: never when a prompt was submitted after the Stop or SessionStart', () => {
+    expect(idle(input({ events: [ev('Stop', 590_000)], transcript: [asst(600_000), prompt(30_000)] }))).toBeUndefined();
+    expect(idle(input({ events: [ev('SessionStart', 3000_000)], transcript: [asst(600_000), prompt(30_000)] }))).toBeUndefined();
+  });
+  it('hooks: never when the registry contradicts them (busy or waiting)', () => {
+    expect(idle(input({ events: [ev('Stop', 590_000)], data: { status: 'busy', statusUpdatedAt: NOW - 1000 } }))).toBeUndefined();
+    expect(idle(input({ events: [ev('Stop', 590_000)], data: { status: 'waiting', waitingFor: 'permission prompt', statusUpdatedAt: NOW - 1000 } }))).toBeUndefined();
+    expect(idle(input({ events: [ev('Stop', 590_000)], data: { status: undefined } }))).toBe(true);
+  });
+  it('no hook events for the session: the registry status says idle; no status, no idle', () => {
+    expect(idle(input())).toBe(true);
+    expect(idle(input({ data: { status: undefined } }))).toBeUndefined();
+    expect(idle(input({ data: { status: 'busy' } }))).toBeUndefined();
+    expect(idle(input({ data: { status: 'waiting', waitingFor: 'input needed' } }))).toBeUndefined();
+  });
+  it('never while it needs you, works, compacts, is at its limit or has stopped', () => {
+    const bash = asst(30_000, [{ type: 'tool_use', id: 't', name: 'Bash', input: { command: 'rm -rf dist' } }]);
+    expect(idle(input({ transcript: [bash] }))).toBeUndefined();                                    // unresolved tool + idle: needs-you
+    expect(idle(input({ transcript: [asst(5000)], data: { status: undefined }, events: [ev('Stop', 4000)] }))).toBeUndefined(); // fresh entry: working
+    expect(idle(input({ usageExhausted: true }))).toBeUndefined();
+    expect(idle(input({ live: false }))).toBeUndefined();
+    expect(idle(input({ events: [ev('PreCompact', 1000)] }))).toBeUndefined();
+  });
+});
