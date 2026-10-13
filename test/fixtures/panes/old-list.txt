@@ -1,0 +1,12 @@
+ ● Here are the options I see:
+
+   1. Rewrite the parser
+   2. Patch the existing one
+   3. Leave it alone
+
+   I'd go with option 2. Want me to continue?
+
+────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ accept edits on (shift+tab to cycle)

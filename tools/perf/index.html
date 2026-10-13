@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>clayclaude perf</title>
+  <style>
+    html, body { margin: 0; background: #0e1014; color: #f2f4f7; font: 13px/1.35 ui-monospace, Menlo, monospace; }
+    #log { position: fixed; right: 0; top: 0; width: 46vw; height: 100vh; overflow: auto; padding: 8px; white-space: pre-wrap; background: #161a21; }
+    #stage { position: fixed; left: 0; top: 0; width: 54vw; height: 100vh; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 4px; padding: 4px; }
+    .char { height: 72px; aspect-ratio: 1; position: relative; background: #1e2430; border-radius: 8px; }
+  </style>
+</head>
+<body><div id="stage"></div><div id="log"></div><script type="module" src="./perf.ts"></script></body>
+</html>

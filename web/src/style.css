@@ -1,0 +1,203 @@
+:root {
+  --bg: #0e1014; --panel: #161a21; --ink: #f2f4f7; --muted: #8a93a3;
+  --needs: #f5b544; --work: #5aa9ff; --sleep: #a78bfa; --compact: #4fd1c5; --limit: #c2410c; --stop: #5b6270;
+  --mono: ui-monospace, "JetBrains Mono", Menlo, monospace;
+  --row: clamp(72px, 15vh, 120px);
+  /* Grid cards (spec §5.1 grid view): shorter than a row so many sessions fit; the character follows the card height. */
+  --card: clamp(60px, 11vh, 96px);
+  --gap: 1vh;
+}
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; background: var(--bg); color: var(--ink); font: 16px/1.3 system-ui, sans-serif; overflow: hidden; }
+#banner { position: fixed; inset: 0 0 auto; padding: 6px; text-align: center; background: var(--limit); z-index: 10; font-weight: 600; }
+#app { height: 100%; display: flex; flex-direction: column; padding: 1.6vh 1.6vw; gap: 1.4vh; }
+/* The disconnected banner pushes the board down instead of covering the clock. */
+#banner:not([hidden]) + #app { padding-top: calc(1.6vh + 34px); }
+/* When the meters cannot fit beside the counts (portrait, about 601 px wide) they and the buttons wrap to a second line. */
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: clamp(6px, 1.2vw, 24px); }
+/* The clock shrink-wraps its time; the date under it is about half its size and justified to span the same width
+   (spec §5.1, UI round 4). Both are monospaced, so the date's 9 to 11 characters at .44em never outgrow the 5 of the time. */
+.clock { font: 600 clamp(36px, min(9vh, 6vw), 72px)/1 var(--mono); flex: none; cursor: default; user-select: none; }
+.time { display: block; white-space: nowrap; }
+.date { font: 500 .44em/1.1 var(--mono); color: #b3bbc8; margin-top: .25em; white-space: nowrap; text-align: justify; text-align-last: justify; }
+/* Each count is a button: its number above its label. The active filter is outlined and lit in its state's colour. */
+.counts { display: flex; flex: none; }
+.count { display: grid; justify-items: center; gap: .3vh; padding: .5vh .45vw; border: 2px solid transparent; border-radius: 10px;
+  background: none; color: var(--muted); font: clamp(11px, min(2.1vh, 1.4vw), 15px)/1.1 system-ui, sans-serif; white-space: nowrap; cursor: pointer; }
+.count b { color: var(--c, var(--ink)); font: 700 clamp(24px, min(6vh, 4vw), 44px)/1 var(--mono); }
+.c-needs-you { --c: var(--needs); } .c-working { --c: var(--work); } .c-asleep { --c: var(--sleep); } .c-stopped { --c: #9aa2b1; }
+.count.on { border-color: var(--c); color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); font-weight: 700; }
+/* The meters take the room left over and sit at its right; that room is a container, so the bars' figure line can
+   tell when it runs out (below). Its 10 px monospace makes 1ch one figure character. */
+.meters { display: flex; gap: clamp(4px, .7vw, 16px); flex: 1 1 0; justify-content: flex-end;
+  container: meters / inline-size; font: 10px var(--mono); }
+/* The meters' room is a size container, so it has no content width of its own. This is the narrowest it holds them
+   (each meter's 7.5ch column plus the gaps), so a bar too narrow for them wraps instead of spilling them left over
+   the counts. */
+.meters { min-width: 7.5ch; }
+.meters:has(> :nth-child(2)) { min-width: calc(2 * 7.5ch + 1 * clamp(4px, .7vw, 16px)); }
+.meters:has(> :nth-child(3)) { min-width: calc(3 * 7.5ch + 2 * clamp(4px, .7vw, 16px)); }
+.meters:has(> :nth-child(4)) { min-width: calc(4 * 7.5ch + 3 * clamp(4px, .7vw, 16px)); }
+.meters:has(> :nth-child(5)) { min-width: calc(5 * 7.5ch + 4 * clamp(4px, .7vw, 16px)); }
+.meters:has(> :nth-child(6)) { min-width: calc(6 * 7.5ch + 5 * clamp(4px, .7vw, 16px)); }
+.meters:empty { min-width: 0; }
+/* Portrait (the tablet is about 601 px wide): the meters get their own line under the clock, counts and buttons. */
+@media (orientation: portrait) { .meters { order: 1; flex-basis: 100%; } }
+/* ...one short line (Task 37): each meter puts its ring or bar beside its label, so the line is about one ring high and
+   the top bar stays within 1.3 times its landscape height. Rings give way (down to 20 px) before anything spills. */
+@media (orientation: portrait) {
+  .meter { column-gap: 4px; justify-items: start; }
+  .meter:has(> .rings) { grid-template-columns: minmax(20px, clamp(36px, 4.2vh, 44px)) minmax(7.5ch, auto); }
+  .meter > .rings { grid-row: span 2; width: 100%; }
+  .meter:has(> .stale) > .rings { grid-row: span 3; }
+  .meter:has(> .rings) > :not(.rings) { grid-column: 2; }
+  .meter:has(> .bars) { grid-template-columns: auto auto; align-items: center; }
+  .meter > .bars { margin: 0; }
+  .meter:has(> .bars) > :is(.mnums, .stale) { grid-column: 1 / -1; } .meter:has(> .bars) > .stale { order: 1; }
+}
+/* "+ New" and the cog wrap together and sit at the right: + New's margin holds the place of the cog's column (its
+   48 px and the gap) when the bar decides what fits on a line, and the column's equal negative margin moves it back. */
+.top { --cogplace: calc(48px + clamp(6px, 1.2vw, 24px)); }
+.top > .new { margin-left: auto; margin-right: var(--cogplace); }
+/* Task 38: the cog sits a little higher with the view switch directly under it. The column is its line's height plus the
+   room around the bar on each side (the smaller of the gap to the board and the gap to the meters' line in portrait),
+   so the switch gets a whole 48 px square to tap; its negative margins hand that room back, so the bar is no taller.
+   The cog takes what is left, up to its usual 44 px, and reaches on up into the rest of #app's top padding. It keeps at
+   least 24 px (its glyph's size): when the bar wraps, + New and the column sit alone on a line only + New's height, and
+   there the column makes that line a little taller rather than squeeze the cog's tap box under its glyph. */
+.top { --around: min(1.4vh, clamp(6px, 1.2vw, 24px)); }
+.top > .side { flex: none; align-self: stretch; display: flex; flex-direction: column; justify-content: center; width: 48px;
+  margin: calc(-1 * var(--around)) 0 calc(-1 * var(--around)) calc(-1 * var(--cogplace)); }
+.side > .cog { flex: 1 1 0; min-height: 24px; max-height: 44px; width: 48px; margin-top: min(0px, calc(var(--around) - 1.6vh)); }
+.side > .view { flex: none; width: 48px; height: 48px; padding: 0; background: none; border: 0; border-radius: 0; color: var(--muted);
+  display: grid; place-items: center; cursor: pointer; }
+/* A meter is a button (a tap opens the account popup). Figures are tabular and sit in fixed 4-character columns. */
+.meter { display: grid; grid-template-columns: minmax(7.5ch, auto); justify-items: center; align-content: center; gap: 2px;
+  background: none; border: 0; padding: 0; color: var(--ink); font: 10px/1.2 var(--mono); cursor: pointer; flex: 0 1 auto; }
+/* With many accounts on a narrow screen the meters give way: labels ellipsise and rings and bars shorten, down to the
+   width of the figure line ("wk 100%" under rings; bars below); figures never shrink. */
+.rings { width: clamp(40px, 9vh, 64px); max-width: 100%; height: auto; }
+.ring-pct { fill: var(--ink); font: 700 11px var(--mono); }
+.bars { width: 64px; max-width: 100%; height: 16px; margin: 8px 0; }
+.stale { font: 600 10px var(--mono); color: var(--needs); white-space: nowrap; }
+.mlabel { font: 600 11px/1.3 system-ui, sans-serif; max-width: min(8ch, 100%); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fig { display: inline-block; width: 4ch; text-align: right; font: 10px/1.2 var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+.mnums { font: 10px/1.2 var(--mono); color: var(--muted); white-space: nowrap; }
+/* Bars: "5h N% / wk N%" is 17 figure characters, padded 5 px either side because it is wider than its bar and would
+   otherwise run into the next account's line. Only when the room cannot hold one such line per account does the line
+   drop its words ("N% N%", 9 characters; the top bar is the 5-hour one), then, with still less room, its % signs
+   ("N N", 7); after that the bars shorten. One rule per account count, since a container query cannot count children. */
+.mnums:has(> .k) { padding-inline: var(--mpad, 5px); }
+.mnums :is(.k, .sep) { display: var(--words, inline); }
+.mnums .sep + .k + .fig { margin-left: var(--figgap, 0); }
+.mnums .k + .fig { width: var(--figw, 4ch); }
+.mnums .k + .fig .pc { display: var(--pc, inline); }
+@container meters (width < calc(17ch + 10px)) { .mnums { --words: none; --figgap: 1ch; --mpad: 0; } }
+@container meters (width < calc(2 * (17ch + 10px) + 1 * clamp(4px, .7vw, 16px))) { .meters:has(> :nth-child(2)) .mnums { --words: none; --figgap: 1ch; --mpad: 0; } }
+@container meters (width < calc(3 * (17ch + 10px) + 2 * clamp(4px, .7vw, 16px))) { .meters:has(> :nth-child(3)) .mnums { --words: none; --figgap: 1ch; --mpad: 0; } }
+@container meters (width < calc(4 * (17ch + 10px) + 3 * clamp(4px, .7vw, 16px))) { .meters:has(> :nth-child(4)) .mnums { --words: none; --figgap: 1ch; --mpad: 0; } }
+@container meters (width < calc(5 * (17ch + 10px) + 4 * clamp(4px, .7vw, 16px))) { .meters:has(> :nth-child(5)) .mnums { --words: none; --figgap: 1ch; --mpad: 0; } }
+@container meters (width < calc(6 * (17ch + 10px) + 5 * clamp(4px, .7vw, 16px))) { .meters:has(> :nth-child(6)) .mnums { --words: none; --figgap: 1ch; --mpad: 0; } }
+@container meters (width < 9ch) { .mnums { --figw: 3ch; --pc: none; } }
+@container meters (width < calc(2 * 9ch + 1 * clamp(4px, .7vw, 16px))) { .meters:has(> :nth-child(2)) .mnums { --figw: 3ch; --pc: none; } }
+@container meters (width < calc(3 * 9ch + 2 * clamp(4px, .7vw, 16px))) { .meters:has(> :nth-child(3)) .mnums { --figw: 3ch; --pc: none; } }
+@container meters (width < calc(4 * 9ch + 3 * clamp(4px, .7vw, 16px))) { .meters:has(> :nth-child(4)) .mnums { --figw: 3ch; --pc: none; } }
+@container meters (width < calc(5 * 9ch + 4 * clamp(4px, .7vw, 16px))) { .meters:has(> :nth-child(5)) .mnums { --figw: 3ch; --pc: none; } }
+@container meters (width < calc(6 * 9ch + 5 * clamp(4px, .7vw, 16px))) { .meters:has(> :nth-child(6)) .mnums { --figw: 3ch; --pc: none; } }
+.new { flex: none; background: #e07a4f; color: #111; border: 0; border-radius: 10px; padding: 1.2vh clamp(8px, 1.2vw, 16px); font-weight: 700; font-size: clamp(14px, 2.6vh, 16px); white-space: nowrap; }
+.new:disabled { opacity: .5; }
+.cog { flex: none; background: none; border: 0; color: var(--muted); font-size: 24px; min-width: 40px; min-height: 44px; padding: 0; }
+.list { flex: 1; min-height: 0; overflow-y: auto; }
+.strips { display: flex; flex-direction: column; gap: var(--gap); }
+/* Measures one row's height and the gap for the auto layout (board.ts), so the sizes live only here. */
+.rowprobe { position: absolute; visibility: hidden; pointer-events: none; height: var(--row); width: var(--gap); }
+/* Cards per line follow the container width; the order is the strip order, read left to right.
+   max-content rows: with more cards than fit, auto rows would shrink to the cards' min-height and a needs-you card's
+   question and Answer button would spill over the next line. */
+.grid { display: grid; gap: var(--gap); align-content: start; grid-auto-rows: max-content;
+  grid-template-columns: repeat(auto-fill, minmax(clamp(165px, 18vw, 240px), 1fr)); }
+.gcard { --c: var(--stop); --h: var(--card); --cs: var(--card); min-height: var(--h); display: grid; grid-template-columns: calc(var(--h) * .8) minmax(0, 1fr);
+  align-items: center; column-gap: .8vw; padding: .6vh .8vw .6vh .4vw;
+  background: color-mix(in srgb, var(--c) 10%, var(--panel)); border-left: 4px solid var(--c); border-radius: 10px; }
+.gbody { min-width: 0; display: flex; flex-direction: column; gap: .2vh; }
+.gcard .name { font-size: clamp(13px, 2.5vh, 17px); }
+.gstate { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 6px; white-space: nowrap; }
+.gctx { margin-left: auto; } /* a narrow card (portrait): the figure drops under the word, right-aligned, inside the card */
+.gcard .word { font-size: clamp(11px, 1.9vh, 14px); text-align: left; }
+.gctx { font: 600 clamp(11px, 1.9vh, 14px) var(--mono); color: var(--muted); }
+.gcard .action { font-size: clamp(11px, 1.9vh, 13px); }
+/* A needs-you card shows its question, clamped and centred under the state line (the answer bubble), with any Open button bottom right;
+   the focus view and the answer sheet show the question whole. */
+.gcard.st-needs-you .action { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; text-align: center; margin-top: .2vh; }
+.gcard .answer-btn { margin-top: .4vh; padding: .5vh .9vw; font-size: 13px; border-radius: 8px; align-self: flex-end; }
+.gcard .tag { font-size: 10px; }
+.row { --c: var(--stop); --h: var(--row); --cs: var(--row); flex: none; height: var(--h); display: grid; align-items: center; column-gap: 1.6vw;
+  /* Fixed context and age columns keep every row's cells aligned, whatever their text width ("7%" or "1h 10m").
+     The character column is the base row height in every state (--cs), so a taller row never has a bigger character. */
+  grid-template-columns: var(--cs) minmax(0, 1.5fr) minmax(0, 2.7fr) 5.5em 4em 7.5em;
+  grid-template-areas: "char who action ctx age word";
+  background: color-mix(in srgb, var(--c) 10%, var(--panel)); border-left: 4px solid var(--c); border-radius: 10px; padding-right: 1.4vw; }
+.row > .char { grid-area: char; } .row > .who { grid-area: who; } .row > .action { grid-area: action; }
+.row > .ctx { grid-area: ctx; } .row > .age { grid-area: age; } .row > .word { grid-area: word; } .row > .acts { grid-area: acts; }
+/* A row with a button: the status word over it, both in the right-hand column. */
+.row:has(> .acts) { grid-template-areas: "char who action ctx age word" "char who action ctx age acts"; align-content: center; row-gap: .6vh; }
+.row:has(> .acts) > .word { align-self: end; } .row:has(> .acts) > .acts { align-self: start; }
+.acts { display: flex; justify-content: flex-end; gap: .6vw; }
+.acts .answer-btn { margin: 0; }
+/* Spec §5.1 (UI round 4): Clear on a stopped row or card, under its status word; Clear all stopped heads the stopped filter. */
+.clear-btn { padding: 0 clamp(10px, 1.4vw, 18px); font-size: clamp(13px, 2.2vh, 15px); font-weight: 600; }
+.gcard .clear-btn { margin-top: .4vh; align-self: flex-end; }
+.clearbar { flex: none; display: flex; justify-content: flex-end; }
+.grid > .clearbar { grid-column: 1 / -1; }
+.clear-all { font-weight: 600; }
+/* Spec §5.1 (UI round 4): a needs-you row is at least 1.5 rows tall and grows to show the whole question. The name,
+   context, age and status word keep their places on the first line; the question is centred across the whole text
+   area under them (as the answer bubble, Task 36); an Open button sits bottom right, under the status word. Its character is the same
+   size as every other row's. */
+.row.st-needs-you, .gcard.st-needs-you { --c: var(--needs); }
+.row.st-needs-you { --h: calc(var(--row) * 1.5); height: auto; min-height: var(--h); padding-block: 1.4vh; row-gap: 1vh; align-content: center;
+  grid-template-areas: "char who who ctx age word" "char action action action action acts"; }
+/* With no Open button, the question bubble takes the button's cell too (Task 36). */
+.row.st-needs-you:not(:has(> .acts)) { grid-template-areas: "char who who ctx age word" "char action action action action action"; }
+.row.st-needs-you > .word { align-self: center; }
+.row.st-needs-you > .action { text-align: center; align-self: center; }
+.row.st-needs-you > .acts { align-self: end; }
+/* Portrait (Task 37): six columns in about 600 px left the name and the action two or three characters each. Every
+   row takes the needs-you row's two lines: the name across the text area, the action under it. The row keeps its height,
+   unless its cells need more (an offline stopped row: name, meta and offline tag over a 44 px Clear), when it grows. */
+@media (orientation: portrait) {
+  .row:not(.st-needs-you) { grid-template-areas: "char who who ctx age word" "char action action action action action"; align-content: center; row-gap: .6vh;
+    height: auto; min-height: var(--h); }
+  .row:not(.st-needs-you):has(> .acts) { grid-template-areas: "char who who ctx age word" "char action action action action acts"; }
+}
+/* Scoped to rows and grid cards: the focus panel and the minis share the st-* classes but must not be dimmed. */
+.row.st-working, .gcard.st-working { --c: var(--work); } .row.st-asleep, .gcard.st-asleep { --c: var(--sleep); }
+.row.st-compacting, .gcard.st-compacting { --c: var(--compact); }
+.row.st-limit, .gcard.st-limit { --c: var(--limit); opacity: .75; } .row.st-stopped, .gcard.st-stopped { opacity: .55; }
+/* Spec §12: an unreachable host's rows are greyed (state colour dropped), with the offline tag still amber. */
+.row.offline, .gcard.offline { --c: var(--stop); opacity: .6; }
+.offline .name, .offline .meta, .offline .action, .offline .ctx, .offline .age { color: var(--muted); }
+.char { position: relative; width: calc(var(--cs) * .8); aspect-ratio: 1; justify-self: center; display: grid; place-items: center; }
+.ph { width: 70%; aspect-ratio: 1; border-radius: 22%; background: var(--c); display: flex; gap: 18%; justify-content: center; align-items: center; }
+.ph i { width: 12%; aspect-ratio: 1; border-radius: 50%; background: #15171c; }
+.name { font-weight: 700; font-size: clamp(16px, 3.2vh, 24px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A long-press on a name opens the rename sheet (Task 41): no text selection or callout under the finger. */
+.row .name, .gcard .name { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.meta { font: 12px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tag { font: 11px/1.25 var(--mono); color: var(--needs); }
+.action { font: clamp(12px, 2.3vh, 16px) var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-needs-you .action { white-space: pre-line; overflow-wrap: anywhere; }
+/* Task 36: the question bubble is the one answer control: a real button that opens the answer sheet, with a hit box
+   of at least 48×48 CSS px. It keeps the question's centred text; the bubble outline says it can be tapped. */
+.action.qbubble { min-width: 48px; min-height: 48px; padding: .6vh 1vw; color: var(--ink); cursor: pointer;
+  background: color-mix(in srgb, var(--needs) 14%, var(--panel)); border: 1px solid color-mix(in srgb, var(--needs) 55%, transparent); border-radius: 12px; }
+.action.qbubble:focus-visible { outline: 2px solid var(--needs); outline-offset: 2px; }
+/* A card clamps the question inside the bubble (the bubble is taller than two lines, so the clamp sits on its text). */
+.gcard.st-needs-you .action.qbubble { display: flex; align-items: center; justify-content: center; }
+.gcard .qbubble > span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ctx, .age { font: 600 14px var(--mono); color: var(--muted); display: flex; align-items: center; justify-content: flex-end; gap: 6px; white-space: nowrap; }
+.ctxbar { width: 40px; height: 4px; border-radius: 2px; background: #ffffff22; overflow: hidden; }
+.ctxbar span { display: block; height: 100%; background: var(--c); }
+.word { font: 700 clamp(13px, 2.4vh, 18px) var(--mono); color: var(--c); text-align: right; }
+.st-stopped .word { color: var(--muted); }
+.empty { margin: auto; color: var(--muted); font-size: 20px; }

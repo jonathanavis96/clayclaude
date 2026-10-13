@@ -1,0 +1,12 @@
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ Bash command
+
+   ls ~/notes
+   List the notes folder
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and don't ask again for ls commands in /home/demo/notes
+   3. No
+
+Enter to select · ↑/↓ to navigate · Esc to cancel

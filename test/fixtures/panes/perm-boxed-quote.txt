@@ -1,0 +1,13 @@
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Bash command                                                                 │
+│                                                                              │
+│   cat <<'EOF' > notes.md                                                     │
+│   ----------                                                                 │
+│   > a quote                                                                  │
+│   EOF                                                                        │
+│   Write the notes file                                                       │
+│                                                                              │
+│ Do you want to proceed?                                                      │
+│ ❯ 1. Yes                                                                     │
+│   2. No, and tell Claude what to do differently (esc)                        │
+╰──────────────────────────────────────────────────────────────────────────────╯

@@ -1,0 +1,40 @@
+
+ ▐▛███▛█   Claude Code v2.1.296
+▝▜██████▀  Opus 5.5 with medium effort · Claude Max
+ ▝▝   ▝▝   /home/demo/code/harbor-notes · /rc            
+
+
+❯ Use the WebFetch tool to fetch https://www.iana.org/help/example-domains and tell me its title.   
+  Use no other tool.                                                                                
+
+● Fetch(https://www.iana.org/help/example-domains)
+  ⎿  Interrupted · What should Claude do instead?
+
+✻ Crunched for 5s · done 3:03 PM
+                                                
+❯ Use the Read tool to read /home/demo/shared/shared.md. Use no other tool.   
+                                               
+● Reading /home/demo/shared/shared.md                                      
+  ⎿  /home/demo/shared/shared.md
+                                                   
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ Read file                                     
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Read(/home/demo/shared/shared.md)
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, allow reading from /home/demo/shared during this session
+   3. No
+
+ Esc to cancel · Tab to amend
+
+
+
+
+                                                                                                    
+
+
+
+                                               
+                                                     

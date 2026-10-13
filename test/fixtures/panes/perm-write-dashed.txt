@@ -1,0 +1,32 @@
+
+ ▐▛███▛█   Claude Code v2.1.296
+▝▜██████▀  Opus 5.5 with medium effort · Claude Max
+ ▝▝   ▝▝   ~/code/orchard-api · /rc            
+
+
+❯ Create the file /tmp/scratch/ok.txt containing the word ok.      
+
+  Ran 1 shell command                                     
+  ⎿  Interrupted · What should Claude do instead?            
+
+✻ Cogitated for 3s · done 1:03 PM                                            
+
+❯ Use the Write tool (not Bash) to create /tmp/scratch/ok2.txt     
+  containing the word ok.                                                       
+
+● Write(/tmp/scratch/ok2.txt)
+
+────────────────────────────────────────────────────────────────────────────────
+ Create file                                                               
+ ../../tmp/scratch/ok2.txt
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+  1 ok   
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Do you want to create ok2.txt?                           
+ ❯ 1. Yes                                                                   
+   2. Yes, and switch to accept edits (auto-approve file edits and common file 
+      commands) for this session; Yes, and always allow access to
+      /tmp/scratch for this session (shift+tab)
+   3. No
+
+ Esc to cancel · Tab to amend

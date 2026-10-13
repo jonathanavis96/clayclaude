@@ -1,0 +1,19 @@
+ ● Here are the options I see:
+
+   1. Rewrite the parser
+   2. Patch the existing one
+   3. Leave it alone
+
+   I'd go with option 2. Want me to continue?
+
+────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ accept edits on (shift+tab to cycle)
+  Model: Opus · ctx 41% · $1.20
+  ~/code/orchard-api (main)
+  ⎇ main ↑2
+  MCP: 2 servers connected
+  Update available: run claude update
+  Context left until auto-compact: 12%
+  1 background shell running

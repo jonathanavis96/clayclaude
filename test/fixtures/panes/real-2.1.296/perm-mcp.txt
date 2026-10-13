@@ -1,0 +1,40 @@
+● The title of https://example.com is Example Domain.
+
+  This came from WebFetch's extracted summary, not the raw page. You asked for no other tools, so I 
+  didn't cross-check it with curl.                                                                  
+
+✻ Cooked for 14s · done 2:57 PM
+
+❯ Call the context7 MCP tool resolve-library-id with libraryName "react" (load it with ToolSearch   
+  first if needed). Use no other tool.                                                              
+                                  
+● I couldn't call resolve-library-id. The context7 server is installed but not connected: it       
+  requires OAuth, and its real tools (including resolve-library-id) don't appear until
+  authentication is done. The only context7 tools available are authenticate and
+  complete_authentication.                                                                          
+
+  I didn't start the OAuth flow, since you said to use no other tool. If you want the react lookup,
+  say so and I'll run authenticate, which gives you a URL to open in your browser. Or you can       
+  authorize context7 yourself.                                                        
+                                                                                            
+✻ Cogitated for 9s · done 2:58 PM                                                                   
+                                                                                                    
+❯ Call one read-only tool from the obsidian MCP server (for example one that lists files), loading  
+  it with ToolSearch first if needed. Pick any connected MCP server if obsidian is not connected.   
+  No other tools.                                                                                   
+                                                                                             
+  Calling obsidian…                                                                                
+                                                                                
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ Tool use                                                                                           
+ obsidian — Obsidian List Files In Vault Tool: (MCP)                                                
+
+ About the obsidian — Obsidian List Files In Vault Tool:                                            
+ │ Lists all files and directories in the root directory of your Obsidian vault.
+
+ Do you want to proceed?
+ ❯ 1. Yes                                                                                           
+   2. Yes, and don't ask again for obsidian — Obsidian List Files In Vault commands in /tmp…  
+   3. No                                                                                            
+                                                
+ Esc to cancel · Tab to amend                                                                       

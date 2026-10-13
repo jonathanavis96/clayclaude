@@ -1,0 +1,40 @@
+env | grep -c CLAUDE; claude
+Your user’s .npmrc file (${HOME}/.npmrc)
+has a `globalconfig` and/or a `prefix` setting, which are incompatible with nvm.
+Run `nvm use --delete-prefix v24.13.0 --silent` to unset it.
+demo@host:/home/demo/code/harbor-notes$ env | grep -c CLAUDE; claude
+0
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Allow external CLAUDE.md file imports?
+
+  This project's CLAUDE.md or .claude/rules imports files outside the current working directory.
+  Never allow this for third-party repositories.
+
+  External imports:
+    /home/demo/shared/shared.md
+
+  Important: Only use Claude Code with files you trust. Accessing untrusted files may pose
+  security risks https://code.claude.com/docs/en/security
+
+  ❯ No, disable external imports
+    Yes, allow external imports
+
+  Enter to confirm · Esc to cancel
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

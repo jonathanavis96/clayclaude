@@ -1,0 +1,69 @@
+{
+  "name": "clayclaude",
+  "version": "0.1.0",
+  "description": "An always-on tablet board for your Claude Code sessions, with clay characters.",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "dashboard",
+    "tablet",
+    "android",
+    "adb",
+    "tmux",
+    "kiosk",
+    "usage",
+    "pwa"
+  ],
+  "author": "Jonathan Avis",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jonathanavis96/clayclaude"
+  },
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "clayclaude": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "web/dist",
+    "example.config.yaml",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "clean": "node -e \"for (const d of ['dist', 'web/dist']) require('fs').rmSync(d, { recursive: true, force: true })\"",
+    "build": "tsc -p tsconfig.json && vite build web",
+    "postbuild": "mkdir -p dist/probe dist/hooks dist/hotkey && cp src/probe/probe.py dist/probe/ && cp src/hooks/clayclaude-hook.py dist/hooks/ && cp src/hotkey/clayclaude-hotkey.ahk dist/hotkey/",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p web && tsc -p tools/perf",
+    "dev:web": "vite web",
+    "prepack": "npm run clean && npm run build"
+  },
+  "dependencies": {
+    "ws": "^8.22.0",
+    "yaml": "^2.9.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/pngjs": "^6.0.5",
+    "@types/three": "^0.186.0",
+    "@types/ws": "^8.18.2",
+    "happy-dom": "^21.0.1",
+    "pixelmatch": "^7.2.0",
+    "pngjs": "^7.0.0",
+    "three": "^0.186.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.4"
+  },
+  "optionalDependencies": {
+    "playwright-core": "^1.64.0"
+  }
+}

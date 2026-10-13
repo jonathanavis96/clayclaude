@@ -1,0 +1,10 @@
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ ☐ Colour
+
+Which colour should the label be?
+
+❯ 1. Red
+  2. Green
+  3. Blue
+
+  Enter to select · Esc to cancel

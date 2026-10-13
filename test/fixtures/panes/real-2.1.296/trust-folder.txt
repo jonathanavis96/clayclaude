@@ -1,0 +1,40 @@
+env | grep -c CLAUDE; claude
+Your user’s .npmrc file (${HOME}/.npmrc)
+has a `globalconfig` and/or a `prefix` setting, which are incompatible with nvm.
+Run `nvm use --delete-prefix v24.13.0 --silent` to unset it.
+demo@host:/home/demo/code/harbor-notes$ env | grep -c CLAUDE; claude
+0
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ Accessing workspace:
+
+ /home/demo/code/harbor-notes
+
+ Quick safety check: Is this a project you created or one you trust? (Like your own code, a
+ well-known open source project, or work from your team). If not, take a moment to review what's in
+ this folder first.
+
+ Claude Code'll be able to read, edit, and execute files here.
+
+ Security guide
+
+ ❯ No, exit
+   Yes, I trust this folder
+
+ Enter to confirm · Esc to cancel
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

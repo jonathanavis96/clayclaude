@@ -1,0 +1,29 @@
+
+ ▐▛███▛█   Claude Code v2.1.296
+▝▜██████▀  Opus 5.5 with medium effort · Claude Max
+ ▝▝   ▝▝   ~/code/orchard-api · /rc            
+
+
+❯ Create the file /tmp/scratch/ok.txt containing the word ok.      
+
+● Creating ok.txt containing "ok" and showing its contents
+  ⎿  $ mkdir -p /tmp/scratch && printf 'ok\n' > 
+     /tmp/scratch/ok.txt && cat /tmp/scratch/ok.txt
+
+────────────────────────────────────────────────────────────────────────────────
+ Bash command
+ Tip: auto mode handles these prompts for you — choose "switch to auto mode" 
+ below
+ Create ok.txt containing "ok" and show its contents
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ │ mkdir -p /tmp/scratch && printf 'ok\n' >
+ │ /tmp/scratch/ok.txt && cat /tmp/scratch/ok.txt
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and allow /tmp/scratch access and mkdir -p 
+      /tmp/scratch and printf 'ok\n' commands
+   3. Yes, and switch to auto mode · auto mode handles these prompts for you
+   4. No
+
+ Esc to cancel · Tab to amend
