@@ -64,7 +64,7 @@ clayclaude watches every Claude Code session on this machine and on any machine 
 | **At the usage limit** (X3) | The account has hit its usage limit | Turns grey and glum |
 | **Compacting** (X4) | Claude is compacting the conversation | Squashed under a press |
 
-Claude Code's transcripts do not record a 1M context window, so set `contextWindows` in the config for models whose sessions run on 1M (see [`example.config.yaml`](example.config.yaml)). Otherwise the board assumes 200k until it sees a session go past it.
+Claude Code's transcripts do not record a session's context window. With the optional [status line bridge](#install-and-set-up) the board reads the real one from Claude Code. Without it, set `contextWindows` in the config for models whose sessions run on 1M (see [`example.config.yaml`](example.config.yaml)); otherwise the board assumes 200k until it sees a session go past it.
 
 L1, a waving character in each account's colour, marks the accounts in **+ New**.
 
@@ -107,7 +107,7 @@ You can also open a session in Chrome or the Claude desktop app, attach to its t
 
 In words: the daemon runs a small Python probe on this PC and, over ssh, on each other host. It serves the board to the tablet through `adb reverse` on the USB cable.
 
-- **Optional hooks** append events to `events.jsonl`, so the board can tell "needs you" from "finished".
+- **Optional hooks** append events to `events.jsonl`, so the board can tell "needs you" from "finished". An optional status line bridge records each session's real context window.
 - **Answers** are typed into the session's tmux pane, and only if the prompt on screen is still the one you saw.
 - **+ New** opens a tmux window. The tablet never sends a command line; the daemon checks every choice first.
 - **Off the cable**, nothing listens on your network unless you turn LAN mode on.
@@ -160,7 +160,7 @@ clayclaude demo  [--port N (default 8421)] [--scenario board|gallery] [--speed N
 
 1. Asks which ssh hosts (from your `~/.ssh/config`) also run Claude Code. For each host it asks for the tmux session that new sessions go in, and the folders that hold your repos.
 2. Finds every Claude config directory (`~/.claude`, `~/.claude-work`, ...) on this machine and on those hosts. For each one it asks whether to add it, its label and colour, where its usage figures come from, and what **Open** should do (offering the Chrome profiles it finds).
-3. Offers to install the hooks into that account's `settings.json`. It shows the exact diff first, saves a backup (`settings.json.bak-clayclaude-<time>`) before writing, and leaves every other setting and hook as it was.
+3. Offers to install the hooks into that account's `settings.json`. It shows the exact diff first, saves a backup (`settings.json.bak-clayclaude-<time>`) before writing, and leaves every other setting and hook as it was. Then it offers the status line bridge the same way (off unless you say yes), or, if it is already there, offers to remove it.
 4. Offers to set up the tablet over adb (see [The tablet](#the-tablet)).
 5. Under WSL, offers to install the hotkey script (it runs on the Windows side).
 6. Offers LAN access (off by default) and generates its token.
@@ -178,6 +178,25 @@ The hooks are optional but recommended. They let the board tell a session that *
 They add one line per event (`Notification`, `Stop`, `PreCompact`, `SessionStart`, `SessionEnd`) that runs `<config dir>/clayclaude/hook.py`. The script appends the event to `<config dir>/clayclaude/events.jsonl` (mode 0600), never prints, and always exits 0, so it cannot block or break a session.
 
 The command finds the account's directory through `CLAUDE_CONFIG_DIR` (or `~/.claude` when it is unset). So several accounts can share one `settings.json`, symlinked or generated from one file, and each still logs to its own `events.jsonl`.
+
+</details>
+
+<details>
+<summary><b>The status line bridge</b></summary>
+
+Claude Code tells its status line command each session's real context window (200k or 1M), and nothing else records it. The bridge is optional. Setup offers it per account, shows the diff, and installs it only if you say yes.
+
+Claude Code allows one status line per config directory, so the bridge takes that setting and keeps yours running inside it. Each time Claude Code draws the status line, the bridge:
+
+1. reads the JSON Claude Code sends once;
+2. hands it to `<config dir>/clayclaude/hook.py statusline`, which writes a small record for that session to `<config dir>/clayclaude/context/<session id>.json` (mode 0600): the session id, the window size, the used percentage, the input token count and the model id. Nothing else from the input is kept. The file is rewritten only when a value changes, and records nobody has written for a week are deleted when a new session starts;
+3. runs your previous status line command with the same input, in the same shell, and leaves its output and exit status as they were.
+
+The shell runs your command, not the Python script, so a failing, missing or slow-to-start recorder (or no `python3` at all) cannot blank or change your status line. The recorder adds roughly 30 to 40 ms. With no status line before, the bridge prints nothing.
+
+Your previous command is kept, single quoted, in the bridge's own command in `settings.json` (it starts `__clayclaude_prev='...'`). Running setup again never wraps the bridge twice, and offers **Remove the status line bridge and restore your previous status line?** That puts your command back exactly, or removes the `statusLine` setting if there was none, after a backup. To do it by hand, set `statusLine.command` back to the text inside those quotes (with each `'\''` turned back into `'`).
+
+The status line only runs in a trusted workspace, so a session in a folder you have not trusted keeps the board's estimate.
 
 </details>
 
@@ -242,7 +261,7 @@ When the rows would not fit the screen, the board switches to a grid of smaller 
 <details>
 <summary><b>Focus view</b></summary>
 
-Tapping a row or card opens a large character with the session's context ring, model, effort, recent token counts, tool count and running time. Below are a live feed of its tool calls, the last prompt and reply, and the files touched. **Answer**, **Message**, **Open** and **Attach tmux** appear where they apply. Small characters for the other sessions run along the bottom, to switch to them. Back or **×** closes it.
+Tapping a row or card opens a large character with the session's context ring, model, effort, context in tokens (for example "226k of 1M"), tool count and running time. Below are a live feed of its tool calls, the last prompt and reply, and the files touched. **Answer**, **Message**, **Open** and **Attach tmux** appear where they apply. Small characters for the other sessions run along the bottom, to switch to them. Back or **×** closes it.
 
 </details>
 
@@ -491,8 +510,8 @@ The board can type answers into your sessions and start new ones, so treat acces
 - **Host and Origin checks** on every request and websocket upgrade. The Host header must be a loopback name (or a configured LAN host), and a page on any other site or port can neither read the board nor send it actions. There are no CORS headers.
 - **LAN mode** (off by default) needs the token from `setup` on every request from another device. It is compared in constant time, never logged, and repeated wrong tries lock that address out for a while. The traffic is plain HTTP, so use it only on a network you trust.
 - **Never forward LAN traffic to `127.0.0.1`** (for example a `netsh interface portproxy` rule to `127.0.0.1` under WSL). The daemon would see such requests as local, and any client that writes `Host: localhost` would skip the token. Use WSL's mirrored networking, or forward to the WSL address instead.
-- **What is read on each host:** Claude Code's session files (`<configDir>/sessions/*.json`), the session transcripts under `<configDir>/projects`, the hook events file, and the process list (to tell live sessions from dead ones). For `oauth` meters and the launcher's model list, also `.credentials.json` and the account email in `.claude.json`. When you open the answer sheet, the session's tmux pane is captured.
-- **The only writes:** an `oauth` token refresh (to `.credentials.json`, with a `.bak` copy, and never when `refresh: false`). And the keystrokes of an answer or a message you send, or of a `/rename` you tick in the rename sheet, only if the screen is still the one that was checked, and at most 4,000 characters. Starting a session from **+ New** creates a tmux window when you tap Start. The hooks and the hotkey script are written only by `setup`, after you confirm them.
+- **What is read on each host:** Claude Code's session files (`<configDir>/sessions/*.json`), the session transcripts under `<configDir>/projects`, the hook events file, the status line bridge's records, and the process list (to tell live sessions from dead ones). For `oauth` meters and the launcher's model list, also `.credentials.json` and the account email in `.claude.json`. When you open the answer sheet, the session's tmux pane is captured.
+- **The only writes:** an `oauth` token refresh (to `.credentials.json`, with a `.bak` copy, and never when `refresh: false`). And the keystrokes of an answer or a message you send, or of a `/rename` you tick in the rename sheet, only if the screen is still the one that was checked, and at most 4,000 characters. Starting a session from **+ New** creates a tmux window when you tap Start. The hooks, the status line bridge and the hotkey script are written only by `setup`, after you confirm them; once installed, the bridge writes its small per-session records in the account's `clayclaude/context/` folder.
 - **The config** holds no credentials except the LAN token, and is written with mode 0600; `serve` warns if other users can read it. Keep it out of version control.
 
 ## Troubleshooting and FAQ

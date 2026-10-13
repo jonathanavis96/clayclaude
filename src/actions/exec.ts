@@ -15,7 +15,10 @@ export type HostExec = (host: HostConfig, argv: string[], o?: ExecOptions) => Pr
  * TCP retries, so a host that comes back (laptop woken, network changed) is not reported offline for many minutes.
  */
 export const SSH_OPTS = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5', '-o', 'ServerAliveInterval=5', '-o', 'ServerAliveCountMax=3',
-  '-o', 'ControlMaster=auto', '-o', 'ControlPath=~/.ssh/clayclaude-%C', '-o', 'ControlPersist=10m'];
+  // Compression: a probe moves ~200 KB of JSON and Python per poll, 4x faster over a slow link (measured 8 s to 2 s at
+  // 225 ms). It is fixed when the shared master connection opens, hence the new socket name: an old uncompressed
+  // master, kept alive by ControlPersist and every poll, would otherwise be reused for good.
+  '-o', 'Compression=yes', '-o', 'ControlMaster=auto', '-o', 'ControlPath=~/.ssh/clayclaude-z-%C', '-o', 'ControlPersist=10m'];
 
 export function execCommand(host: HostConfig, argv: string[], sshBin = 'ssh'): { cmd: string; args: string[] } {
   if (argv.length === 0) throw new Error('empty argv');

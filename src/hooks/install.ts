@@ -165,7 +165,7 @@ export interface HookPreview {
 
 const SHARED_OK = 'Sharing is fine: the hook finds each account\'s own directory through CLAUDE_CONFIG_DIR.';
 
-async function sharedNote(io: ConfigIO, settingsPath: string): Promise<string | undefined> {
+export async function sharedNote(io: ConfigIO, settingsPath: string): Promise<string | undefined> {
   const l = await io.links?.(settingsPath);
   if (!l) return undefined;
   if (l.symlinkTo !== undefined) return `${settingsPath} is a symlink to ${l.symlinkTo}, so other accounts may share it; changes are written there and the link is kept. ${SHARED_OK}`;
@@ -173,7 +173,7 @@ async function sharedNote(io: ConfigIO, settingsPath: string): Promise<string | 
   return undefined;
 }
 
-const detectIndent = (text: string) => /\n(\t| +)"/.exec(text)?.[1] ?? '  ';
+export const detectIndent = (text: string) => /\n(\t| +)"/.exec(text)?.[1] ?? '  ';
 
 export async function previewHooks(io: ConfigIO, absConfigDir: string): Promise<HookPreview> {
   const settingsPath = `${absConfigDir}/settings.json`;
@@ -191,7 +191,19 @@ export async function previewHooks(io: ConfigIO, absConfigDir: string): Promise<
   return { settingsPath, changed, added, upgraded, diff: changed ? lineDiff(shownBefore, nextText) : '', nextText, existed: before !== null, ...(shared ? { shared } : {}) };
 }
 
-const stamp = (ms: number) => new Date(ms).toISOString().replace(/[-:T]/g, '').slice(0, 14);
+export const stamp = (ms: number) => new Date(ms).toISOString().replace(/[-:T]/g, '').slice(0, 14);
+
+/**
+ * A backup name for settings.json that is not taken yet: setup may change the same file twice in one second (the hooks,
+ * then the status line bridge), and the second backup must not overwrite the first, which holds the original.
+ */
+export async function backupPath(io: ConfigIO, settingsPath: string, now: number): Promise<string> {
+  const base = `${settingsPath}.bak-clayclaude-${stamp(now)}`;
+  for (let i = 1; ; i++) {
+    const p = i === 1 ? base : `${base}-${i}`;
+    if ((await io.read(p)) === null) return p;
+  }
+}
 
 /**
  * Install (or restore/upgrade) the hook script in this account's own directory, then, only if the hooks are missing or in
@@ -204,7 +216,7 @@ export async function applyHooks(io: ConfigIO, absConfigDir: string, now = Date.
   await io.write(`${dir}/hook.py`, hookSource()); // always: idempotent, and the only repair path for a missing or old copy
   if (!p.changed) return { added: [], upgraded: [] };
   let backup: string | undefined;
-  if (p.existed) { backup = `${p.settingsPath}.bak-clayclaude-${stamp(now)}`; await io.copy(p.settingsPath, backup); }
+  if (p.existed) { backup = await backupPath(io, p.settingsPath, now); await io.copy(p.settingsPath, backup); }
   await io.write(p.settingsPath, p.nextText);
   return { backup, added: p.added, upgraded: p.upgraded };
 }

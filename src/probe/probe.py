@@ -297,6 +297,58 @@ def read_registry(f):
         return None, 0
 
 
+CONTEXT_MAX_BYTES = 4096  # a bridge record is about 200 bytes
+SESSION_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
+
+
+def _count(v):
+    return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None
+
+
+def read_context(path, sid):
+    """One status line bridge record (<configDir>/clayclaude/context/<sessionId>.json), checked field by field; None for
+    anything else. Only the fields the daemon uses are passed on."""
+    try:
+        fh, _ = open_regular(path)
+        with fh:
+            raw_bytes = fh.read(CONTEXT_MAX_BYTES + 1)
+        if len(raw_bytes) > CONTEXT_MAX_BYTES:
+            return None
+        rec = loads(raw_bytes.decode("utf-8", "replace"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(rec, dict) or rec.get("sessionId") != sid:
+        return None
+    size, ts = _count(rec.get("contextWindowSize")), rec.get("ts")
+    if not size or size > 100000000 or isinstance(ts, bool) or not isinstance(ts, (int, float)):
+        return None
+    used = rec.get("usedPercentage")
+    out = {"sessionId": sid, "ts": ts, "contextWindowSize": size,
+           "usedPercentage": used if not isinstance(used, bool) and isinstance(used, (int, float)) and 0 <= used <= 100 else None,
+           "totalInputTokens": _count(rec.get("totalInputTokens"))}
+    if isinstance(rec.get("model"), str) and rec["model"]:
+        out["model"] = rec["model"][:200]
+    return out
+
+
+def read_contexts(d, regs):
+    """The bridge records of the sessions in `regs` (one listdir, then one small read per session that has one).
+    Records of sessions not reported are never read; the bridge prunes the ones nobody has written for a week."""
+    try:
+        names = set(os.listdir(os.path.join(d, "clayclaude", "context")))
+    except OSError:
+        return {}
+    out = {}
+    for reg in regs:
+        sid = reg["data"].get("sessionId") if reg.get("data") else None
+        if not isinstance(sid, str) or sid in out or not SESSION_ID_RE.match(sid) or sid + ".json" not in names:
+            continue
+        rec = read_context(os.path.join(d, "clayclaude", "context", sid + ".json"), sid)
+        if rec:
+            out[sid] = rec
+    return out
+
+
 def snapshot(req):
     tail_bytes = int(req.get("tailBytes", 262144))
     max_lines = int(req.get("maxLines", 60))
@@ -340,7 +392,11 @@ def snapshot(req):
                     wanted.append(((not live, sid in known, -mtime), reg, d, sid, data.get("cwd"), known))
             regs.append(reg)
         events = tail_lines(os.path.join(d, "clayclaude", "events.jsonl"), 65536)
-        dirs.append({"configDir": raw, "registries": regs, "events": events})
+        entry = {"configDir": raw, "registries": regs, "events": events}
+        contexts = read_contexts(d, regs)
+        if contexts:
+            entry["contexts"] = contexts  # only when there are any: the shape is unchanged without the bridge
+        dirs.append(entry)
     wanted.sort(key=lambda w: w[0])
     spent, indexes = 0, {}
     for _, reg, d, sid, cwd, known in wanted:

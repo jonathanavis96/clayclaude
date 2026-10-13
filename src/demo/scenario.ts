@@ -102,6 +102,8 @@ export function sessionAt(def: DemoDef, virtualMin: number, nowMs: number, cache
     key: `${def.host}:${def.account}:${def.id}`, host: def.host, account: def.account, sessionId: `demo-${def.id}`, pid: 40_000 + i,
     name: def.name, cwd: `/home/demo/code/${def.name}`, state, stateSince, live,
     tmux: def.tmux, bridgeSessionId: def.bridge, model: def.model, effort: def.effort, contextPct,
+    // The window the status line bridge would report: the Opus sessions on 1M, the rest on 200k.
+    ...(contextPct === undefined ? {} : (() => { const w = def.model.includes('opus') ? 1_000_000 : 200_000; return { contextWindow: w, contextTokens: Math.round((w * contextPct) / 100) }; })()),
     currentAction: state === 'working' ? def.starting ? 'Starting Claude…' : ACTIONS[(Math.floor(virtualMin * 4) + i) % ACTIONS.length] : undefined,
     question: needs ? def.question ?? 'Waiting for you' : undefined,
     lastAssistantAt, cacheExpiresAt: lastAssistantAt + cacheTtlMinutes * 60_000,

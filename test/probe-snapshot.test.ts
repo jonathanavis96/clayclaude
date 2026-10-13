@@ -251,3 +251,42 @@ describe('probe snapshot edge cases', () => {
     expect(bySid).toEqual({ g1: 1, '*': 0 }); // '*' must not pick up another session's transcript
   });
 });
+
+describe('probe snapshot: status line bridge records', () => {
+  const rec = (sid: string, o: object = {}) => ({ sessionId: sid, ts: 1_760_000_000_000, contextWindowSize: 1_000_000, usedPercentage: 23, totalInputTokens: 226_000, model: 'claude-opus-5-5[1m]', ...o });
+  const ctxDir = (d: string) => { mkdirSync(join(d, 'clayclaude', 'context'), { recursive: true }); return join(d, 'clayclaude', 'context'); };
+
+  it('returns the record of each session it reports, and only those', () => {
+    const d = makeDir();
+    const pid = live();
+    writeJson(join(d, 'sessions', `${pid}.json`), { pid, sessionId: 'a', cwd: '/x', startedAt: 1, procStart: procStart(pid) });
+    writeJson(join(d, 'sessions', '2.json'), { pid: 2, sessionId: 'b', cwd: '/x', startedAt: 1 });
+    const c = ctxDir(d);
+    writeJson(join(c, 'a.json'), rec('a'));
+    writeJson(join(c, 'b.json'), rec('b', { contextWindowSize: 200_000, usedPercentage: null, model: undefined }));
+    writeJson(join(c, 'gone.json'), rec('gone'));
+    const r = runProbeSync({ mode: 'snapshot', dirs: [d] });
+    expect(r.dirs[0].contexts).toEqual({ a: rec('a'), b: { sessionId: 'b', ts: 1_760_000_000_000, contextWindowSize: 200_000, usedPercentage: null, totalInputTokens: 226_000 } });
+  });
+
+  it('ignores garbage: a bad window, a mismatched id, an oversized or non-regular file, odd session ids', () => {
+    const d = makeDir();
+    const sids = ['w0', 'wneg', 'wstr', 'wbool', 'mis', 'big', 'fifo', 'arr', 'nots'];
+    sids.forEach((sid, i) => writeJson(join(d, 'sessions', `${i + 10}.json`), { pid: i + 10, sessionId: sid, cwd: '/x', startedAt: 1 }));
+    writeJson(join(d, 'sessions', '99.json'), { pid: 99, sessionId: '../escape', cwd: '/x', startedAt: 1 });
+    const c = ctxDir(d);
+    writeJson(join(c, 'w0.json'), rec('w0', { contextWindowSize: 0 }));
+    writeJson(join(c, 'wneg.json'), rec('wneg', { contextWindowSize: -5 }));
+    writeJson(join(c, 'wstr.json'), rec('wstr', { contextWindowSize: '1000000' }));
+    writeJson(join(c, 'wbool.json'), rec('wbool', { contextWindowSize: true }));
+    writeJson(join(c, 'mis.json'), rec('other'));
+    writeFileSync(join(c, 'big.json'), JSON.stringify(rec('big', { model: 'm'.repeat(10_000) })));
+    execFileSync('mkfifo', [join(c, 'fifo.json')]);
+    writeFileSync(join(c, 'arr.json'), '[1,2]');
+    writeFileSync(join(c, 'nots.json'), '{"sessionId":"nots","ts":"soon","contextWindowSize":200000}');
+    writeJson(join(d, 'clayclaude', 'escape.json'), rec('../escape'));
+    const r = runProbeSync({ mode: 'snapshot', dirs: [d] });
+    expect(r.dirs[0].contexts).toBeUndefined();
+    expect(r.dirs[0].registries).toHaveLength(sids.length + 1);
+  });
+});

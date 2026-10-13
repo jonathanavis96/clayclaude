@@ -21,6 +21,21 @@ export interface ProbeDir {
   configDir: string;
   registries: RawRegistry[];
   events: string[]; // lines of <configDir>/clayclaude/events.jsonl (tail)
+  /** Status line bridge records of the sessions in `registries`, by session id; absent when there are none. */
+  contexts?: Record<string, ContextRecord>;
+}
+
+/** What the status line bridge keeps per session (<configDir>/clayclaude/context/<sessionId>.json), from Claude Code itself. */
+export interface ContextRecord {
+  sessionId: string;
+  /** When these values were first seen (epoch ms); the record is rewritten only when they change. */
+  ts: number;
+  /** The session's context window, as Claude Code reports it to its status line. */
+  contextWindowSize: number;
+  usedPercentage?: number | null;
+  totalInputTokens?: number | null;
+  /** Claude Code's model id, with "[1m]" when the session is on the 1M window. */
+  model?: string;
 }
 
 export interface ProbeSnapshot { ok: true; nowMs: number; dirs: ProbeDir[] }
@@ -63,6 +78,10 @@ export interface Session {
   model?: string;
   effort?: string;
   contextPct?: number;    // 0..100
+  /** Tokens in the context now (the latest turn's input, cache reads and cache writes), when known. */
+  contextTokens?: number;
+  /** The context window contextPct is measured against: the status line bridge's, else the configured or inferred one. */
+  contextWindow?: number;
   currentAction?: string;
   question?: string;
   lastAssistantAt?: number;

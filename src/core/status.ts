@@ -1,5 +1,5 @@
 import { basename } from 'node:path';
-import type { RawRegistry, Session, SessionState } from '../types.js';
+import type { ContextRecord, RawRegistry, Session, SessionState } from '../types.js';
 import { extractTranscript } from './transcript.js';
 
 export interface HookEvent { event: string; sessionId: string; ts: number; message?: string }
@@ -47,6 +47,24 @@ export interface DeriveInput {
    * seen now is added; one in it stays on the 1M window after the turn that showed it has left the transcript tail.
    */
   wide?: Set<string>;
+  /** The status line bridge's record for this session, if the probe found one. */
+  context?: ContextRecord;
+}
+
+const baseModel = (m: string) => m.replace(/\[1m\]$/, '');
+
+/**
+ * The bridge record's window, when it can be trusted: the record is for this session, its window is a sane number, and it
+ * is not from before a switch to another model (a record names the model it was taken on; one older than the latest
+ * response, on a different model, is stale until the status line redraws).
+ */
+function recordedWindow(rec: ContextRecord | undefined, sessionId: string, model: string | undefined, lastResponseAt: number | null): number | undefined {
+  if (!rec || rec.sessionId !== sessionId) return undefined;
+  const w = rec.contextWindowSize;
+  if (typeof w !== 'number' || !Number.isInteger(w) || w <= 0 || w > 100_000_000) return undefined;
+  const stale = model !== undefined && typeof rec.model === 'string' && baseModel(rec.model) !== baseModel(model)
+    && (lastResponseAt === null || !(rec.ts >= lastResponseAt));
+  return stale ? undefined : w;
 }
 
 const str = (v: unknown) => (typeof v === 'string' && v !== '' ? v : undefined);
@@ -136,14 +154,22 @@ export function deriveSession(i: DeriveInput, now: number): Session | null {
     : d.status === 'idle';
   const idle = i.reg.live && state === 'asleep' && !permission && !busy && idleSignal;
 
-  // Transcripts never carry the "[1m]" suffix, so a session seen past its configured window (now, or before a
+  // The window: the status line bridge's record when there is one (Claude Code's own figure). Otherwise a guess:
+  // transcripts never carry the "[1m]" suffix, so a session seen past its configured window (now, or before a
   // compaction still in the tail) must be on the 1M one.
   // A session seen past it once stays on 1M (i.wide), since a compaction ends up scrolling out of the tail.
   const key = `${i.host}:${i.account}:${sessionId}`;
   const configured = contextWindowFor(t.model, i.contextWindows);
   if (t.peakTokens !== null && t.peakTokens > configured) i.wide?.add(key);
-  const window = (t.peakTokens !== null && t.peakTokens > configured) || i.wide?.has(key) ? Math.max(configured, 1_000_000) : configured;
-  const contextPct = t.contextTokens === null ? undefined : Math.min(100, Math.round((100 * t.contextTokens) / window));
+  const recorded = recordedWindow(i.context, sessionId, t.model, t.lastResponseAt);
+  const window = recorded ?? ((t.peakTokens !== null && t.peakTokens > configured) || i.wide?.has(key) ? Math.max(configured, 1_000_000) : configured);
+  // Tokens: the transcript's latest turn, which is what Claude Code's own used_percentage is computed from (input +
+  // cache writes + cache reads of the last response), but re-read every poll and including compaction boundaries; the
+  // record's copy only moves when the status line redraws. The record's count fills in when the tail has no turn.
+  const recTokens = recorded !== undefined && typeof i.context?.totalInputTokens === 'number' && Number.isFinite(i.context.totalInputTokens) && i.context.totalInputTokens >= 0
+    ? i.context.totalInputTokens : null;
+  const tokens = t.contextTokens ?? recTokens;
+  const contextPct = tokens === null ? undefined : Math.min(100, Math.round((100 * tokens) / window));
   const cwd = str(d.cwd) ?? '';
   return {
     key,
@@ -152,6 +178,7 @@ export function deriveSession(i: DeriveInput, now: number): Session | null {
     cwd, state, stateSince, live: i.reg.live,
     tmux: str(d.tmux), bridgeSessionId: str(d.bridgeSessionId),
     model: t.model, effort: t.effort, contextPct,
+    ...(tokens !== null ? { contextTokens: tokens } : {}), contextWindow: window,
     currentAction: t.currentAction, question,
     lastAssistantAt: t.lastAssistantAt ?? undefined,
     cacheExpiresAt: t.lastResponseAt === null ? undefined : t.lastResponseAt + i.cacheTtlMinutes * 60_000,

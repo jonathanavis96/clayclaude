@@ -8,6 +8,14 @@ All notable changes to clayclaude are listed here. The format follows
 
 ### Added
 
+- **Status line bridge: the real context window.** Setup offers (off unless you
+  say yes, with the diff shown and a backup saved) a status line command that
+  records each session's context window from what Claude Code gives its status
+  line, to `<config dir>/clayclaude/context/<session id>.json`, then runs your
+  own status line with the same input and leaves its output as it was. The
+  probe reads those records for the sessions it reports, and the board uses the
+  recorded window over the configured or guessed one. Setup never wraps it
+  twice and can remove it, restoring your previous status line exactly.
 - **Rename in Claude Code too.** The rename sheet's **Also rename in Claude
   Code** tick (off by default, offered beside **Also rename the tmux window**)
   types Claude Code's `/rename <name>` into the session, only under Message's
@@ -40,6 +48,11 @@ All notable changes to clayclaude are listed here. The format follows
   matches. Live sessions are never touched.
 
 ### Changed
+
+- **The focus view shows the context in tokens** ("226k of 1M": the current
+  context and the window the board uses) in place of "tokens in / out
+  (recent)", which summed only the last few hundred transcript lines. Sessions
+  on `/api/state` carry `contextTokens` and `contextWindow`.
 
 - **A named session's input box is recognised.** Claude Code draws a session's
   name (`--name` or `/rename`) on the top rule of its input box; replies and

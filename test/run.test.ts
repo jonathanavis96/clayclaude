@@ -16,7 +16,8 @@ describe('runProbe', () => {
     const c = probeCommand({ id: 'b', ssh: 'box', tmuxSession: 'x', repoRoots: [] }, { mode: 'snapshot', dirs: ["~/it's"] });
     expect(c.cmd).toBe('ssh');
     expect(c.args).toContain('ControlMaster=auto');
-    expect(c.args).toContain('ControlPath=~/.ssh/clayclaude-%C'); // fixed-length hash: long host names cannot overflow the socket path
+    expect(c.args).toContain('ControlPath=~/.ssh/clayclaude-z-%C'); // fixed-length hash: long host names cannot overflow the socket path
+    expect(c.args).toContain('Compression=yes'); // a poll moves ~200 KB of JSON and Python: 4x faster on a slow link
     expect(c.args.slice(-4, -2)).toEqual(['box', 'python3']);
     expect(c.args.at(-2)).toBe('-I'); // isolated: no cwd ($HOME) on sys.path, no PYTHON* env
     expect(c.args.at(-1)).toBe('-'); // script and request on stdin: nothing for the remote shell to quote, no argv size cap

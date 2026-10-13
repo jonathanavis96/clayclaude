@@ -15,7 +15,7 @@ export function ringSvg(pct: number | null): string {
 export function statsHtml(v: FocusVM): string {
   return `${ringSvg(v.ctxPct)}<dl class="stats">
     <div><dt>model</dt><dd>${esc(v.model)}</dd></div><div><dt>effort</dt><dd>${esc(v.effort)}</dd></div>
-    <div><dt>tokens in / out (recent)</dt><dd>${esc(v.tokensIn)} / ${esc(v.tokensOut)}</dd></div>
+    <div><dt>context</dt><dd>${esc(v.context)}</dd></div>
     <div><dt>tools</dt><dd>${v.toolCount ?? '–'}</dd></div><div><dt>running</dt><dd>${esc(v.running)}</dd></div></dl>`;
 }
 
