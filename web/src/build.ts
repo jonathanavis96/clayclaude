@@ -15,9 +15,12 @@ export function buildLabel(s: Stamp): string {
   return `v${s.version} · ${s.commit}${when}`;
 }
 
-/** The daemon now serves another build than this page is running. Unknown stamps and a dev page never count. */
+/**
+ * The daemon now serves another build than this page is running. A dev page and an unknown stamp (no build.json) never
+ * count; a build made outside a git checkout has commit `unknown` but a build time, which still tells two builds apart.
+ */
 export function staleAgainst(page: Stamp, served: Stamp | null): boolean {
-  if (!served || page.commit === 'dev' || served.commit === 'unknown') return false;
+  if (!served || page.commit === 'dev' || !served.builtAt) return false;
   return served.commit !== page.commit || served.builtAt !== page.builtAt;
 }
 

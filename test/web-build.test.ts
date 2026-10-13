@@ -26,6 +26,10 @@ describe('build stamp in the page', () => {
     expect(staleAgainst(page, { ...page })).toBe(false);
     expect(staleAgainst(page, null)).toBe(false);
     expect(staleAgainst(page, { version: 'unknown', commit: 'unknown', builtAt: null })).toBe(false);
+    // Built outside a git checkout (a release download): no commit, but its build time still tells two builds apart.
+    const zip = { version: '0.1.0', commit: 'unknown', builtAt: '2026-10-12T19:00:00.000Z' };
+    expect(staleAgainst(zip, { ...zip, builtAt: '2026-10-12T20:00:00.000Z' })).toBe(true);
+    expect(staleAgainst(zip, { ...zip })).toBe(false);
     expect(staleAgainst({ version: 'dev', commit: 'dev', builtAt: null }, { ...page, commit: 'def5678' })).toBe(false);
   });
   it('reloads once per served build, never in a loop, and waits while a sheet is open', () => {
