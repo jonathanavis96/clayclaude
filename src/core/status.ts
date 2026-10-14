@@ -49,6 +49,8 @@ export interface DeriveInput {
   wide?: Set<string>;
   /** The status line bridge's record for this session, if the probe found one. */
   context?: ContextRecord;
+  /** The account's auto-compact window: Claude Code compacts there, so a smaller one is the window the session really has. */
+  compactWindow?: number;
 }
 
 const baseModel = (m: string) => m.replace(/\[1m\]$/, '');
@@ -162,7 +164,10 @@ export function deriveSession(i: DeriveInput, now: number): Session | null {
   const configured = contextWindowFor(t.model, i.contextWindows);
   if (t.peakTokens !== null && t.peakTokens > configured) i.wide?.add(key);
   const recorded = recordedWindow(i.context, sessionId, t.model, t.lastResponseAt);
-  const window = recorded ?? ((t.peakTokens !== null && t.peakTokens > configured) || i.wide?.has(key) ? Math.max(configured, 1_000_000) : configured);
+  const modelWindow = recorded ?? ((t.peakTokens !== null && t.peakTokens > configured) || i.wide?.has(key) ? Math.max(configured, 1_000_000) : configured);
+  // An auto-compact window below the model's is where the session really ends (Claude Code's own percentage ignores it).
+  const cap = i.compactWindow;
+  const window = typeof cap === 'number' && Number.isInteger(cap) && cap > 0 && cap < modelWindow ? cap : modelWindow;
   // Tokens: the transcript's latest turn, which is what Claude Code's own used_percentage is computed from (input +
   // cache writes + cache reads of the last response), but re-read every poll and including compaction boundaries; the
   // record's copy only moves when the status line redraws. The record's count fills in when the tail has no turn.

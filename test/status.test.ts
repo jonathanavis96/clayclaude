@@ -318,6 +318,13 @@ describe('deriveSession: the status line bridge record', () => {
     // the same model with the [1m] suffix is the same model
     expect(deriveSession(input({ transcript: [turn(150_000, 60_000)], context: rec({ ts: NOW - 120_000 }) }), NOW)).toMatchObject({ contextWindow: 1_000_000 });
   });
+  it('counts against the account\'s auto-compact window when it is smaller than the model\'s', () => {
+    expect(deriveSession(input({ transcript: [turn(190_000)], context: rec(), compactWindow: 500_000 }), NOW)).toMatchObject({ contextPct: 38, contextTokens: 190_000, contextWindow: 500_000 });
+    // without a record too, and a cap above the window (or nonsense) changes nothing
+    expect(deriveSession(input({ transcript: [turn(266_000)], compactWindow: 300_000 }), NOW)).toMatchObject({ contextPct: 89, contextWindow: 300_000 });
+    expect(deriveSession(input({ transcript: [turn(150_000)], compactWindow: 500_000 }), NOW)).toMatchObject({ contextPct: 75, contextWindow: 200_000 });
+    for (const w of [0, -1, Number.NaN, 1.5]) expect(deriveSession(input({ transcript: [turn(150_000)], context: rec(), compactWindow: w }), NOW), String(w)).toMatchObject({ contextWindow: 1_000_000 });
+  });
   it('ignores a record for another session or with a nonsense window', () => {
     expect(deriveSession(input({ transcript: [turn(150_000)], context: rec({ sessionId: 'other' }) }), NOW)).toMatchObject({ contextWindow: 200_000 });
     for (const w of [0, -1, Number.NaN, '1000000', 1e12]) expect(deriveSession(input({ transcript: [turn(150_000)], context: rec({ contextWindowSize: w }) as any }), NOW), String(w)).toMatchObject({ contextWindow: 200_000 });

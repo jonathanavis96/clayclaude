@@ -140,6 +140,7 @@ export class Collector extends EventEmitter {
           }
           const s = deriveSession({ host: host.id, account: account.id, reg, events, usageExhausted: this.exhausted(account.id),
             cacheTtlMinutes: this.cfg.cacheTtlMinutes, contextWindows: this.cfg.contextWindows, hostOnline: true, lastSeen: now, wide: this.wide,
+            ...(typeof dir.compactWindow === 'number' ? { compactWindow: dir.compactWindow } : {}),
             ...(sid && dir.contexts && typeof dir.contexts === 'object' && Object.hasOwn(dir.contexts, sid) ? { context: dir.contexts[sid] } : {}) }, hostNow);
           if (!s) continue;
           const f = files.get(s.key);
