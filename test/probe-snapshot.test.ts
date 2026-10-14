@@ -263,7 +263,7 @@ describe('probe snapshot: the auto-compact window', () => {
     expect(window({ autoCompactWindow: 500000, env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '300000' } })).toBe(300000);
   });
   it('is absent when unset or nonsense', () => {
-    for (const s of [undefined, {}, { autoCompactWindow: 0 }, { autoCompactWindow: '' }, { autoCompactWindow: true }, { autoCompactWindow: -5 }, { autoCompactWindow: 1e12 }, '[1]', '{oops'])
+    for (const s of [undefined, {}, { autoCompactWindow: 0 }, { autoCompactWindow: '' }, { autoCompactWindow: true }, { autoCompactWindow: -5 }, { autoCompactWindow: 1e12 }, { env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '²' } }, { autoCompactWindow: '9'.repeat(5000) }, '[1]', '{oops'])
       expect(window(s), JSON.stringify(s)).toBeUndefined();
   });
 });

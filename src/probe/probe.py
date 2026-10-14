@@ -368,8 +368,9 @@ def read_compact_window(d):
         return None
     env = cfg.get("env")
     for v in ((env.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") if isinstance(env, dict) else None), cfg.get("autoCompactWindow")):
-        if isinstance(v, str) and v.strip().isdigit():
-            v = int(v.strip())
+        if isinstance(v, str):
+            v = v.strip()
+            v = int(v) if 0 < len(v) <= 12 and v.isascii() and v.isdigit() else None
         n = _count(v)
         if n and n <= 100000000:
             return n
