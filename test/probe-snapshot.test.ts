@@ -252,6 +252,22 @@ describe('probe snapshot edge cases', () => {
   });
 });
 
+describe('probe snapshot: the auto-compact window', () => {
+  const window = (settings: unknown) => {
+    const d = makeDir();
+    if (settings !== undefined) writeFileSync(join(d, 'settings.json'), typeof settings === 'string' ? settings : JSON.stringify(settings));
+    return runProbeSync({ mode: 'snapshot', dirs: [d] }).dirs[0].compactWindow;
+  };
+  it('reads autoCompactWindow, with the env setting taking precedence', () => {
+    expect(window({ autoCompactWindow: 500000, model: 'opus[1m]' })).toBe(500000);
+    expect(window({ autoCompactWindow: 500000, env: { CLAUDE_CODE_AUTO_COMPACT_WINDOW: '300000' } })).toBe(300000);
+  });
+  it('is absent when unset or nonsense', () => {
+    for (const s of [undefined, {}, { autoCompactWindow: 0 }, { autoCompactWindow: '' }, { autoCompactWindow: true }, { autoCompactWindow: -5 }, { autoCompactWindow: 1e12 }, '[1]', '{oops'])
+      expect(window(s), JSON.stringify(s)).toBeUndefined();
+  });
+});
+
 describe('probe snapshot: status line bridge records', () => {
   const rec = (sid: string, o: object = {}) => ({ sessionId: sid, ts: 1_760_000_000_000, contextWindowSize: 1_000_000, usedPercentage: 23, totalInputTokens: 226_000, model: 'claude-opus-5-5[1m]', ...o });
   const ctxDir = (d: string) => { mkdirSync(join(d, 'clayclaude', 'context'), { recursive: true }); return join(d, 'clayclaude', 'context'); };

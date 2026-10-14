@@ -23,6 +23,8 @@ export interface ProbeDir {
   events: string[]; // lines of <configDir>/clayclaude/events.jsonl (tail)
   /** Status line bridge records of the sessions in `registries`, by session id; absent when there are none. */
   contexts?: Record<string, ContextRecord>;
+  /** The account's auto-compact window from settings.json (autoCompactWindow, or CLAUDE_CODE_AUTO_COMPACT_WINDOW in its env), when set. */
+  compactWindow?: number;
 }
 
 /** What the status line bridge keeps per session (<configDir>/clayclaude/context/<sessionId>.json), from Claude Code itself. */

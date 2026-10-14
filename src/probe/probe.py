@@ -349,6 +349,33 @@ def read_contexts(d, regs):
     return out
 
 
+SETTINGS_MAX_BYTES = 1 << 20
+
+
+def read_compact_window(d):
+    """The account's auto-compact window (Claude Code compacts there, so the board counts the context against it):
+    settings.json's env CLAUDE_CODE_AUTO_COMPACT_WINDOW, else its autoCompactWindow. None when unset or unreadable."""
+    try:
+        fh, _ = open_regular(os.path.join(d, "settings.json"))
+        with fh:
+            raw_bytes = fh.read(SETTINGS_MAX_BYTES + 1)
+        if len(raw_bytes) > SETTINGS_MAX_BYTES:
+            return None
+        cfg = loads(raw_bytes.decode("utf-8", "replace"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(cfg, dict):
+        return None
+    env = cfg.get("env")
+    for v in ((env.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW") if isinstance(env, dict) else None), cfg.get("autoCompactWindow")):
+        if isinstance(v, str) and v.strip().isdigit():
+            v = int(v.strip())
+        n = _count(v)
+        if n and n <= 100000000:
+            return n
+    return None
+
+
 def snapshot(req):
     tail_bytes = int(req.get("tailBytes", 262144))
     max_lines = int(req.get("maxLines", 60))
@@ -396,6 +423,9 @@ def snapshot(req):
         contexts = read_contexts(d, regs)
         if contexts:
             entry["contexts"] = contexts  # only when there are any: the shape is unchanged without the bridge
+        compact = read_compact_window(d)
+        if compact:
+            entry["compactWindow"] = compact
         dirs.append(entry)
     wanted.sort(key=lambda w: w[0])
     spent, indexes = 0, {}

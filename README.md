@@ -64,7 +64,7 @@ clayclaude watches every Claude Code session on this machine and on any machine 
 | **At the usage limit** (X3) | The account has hit its usage limit | Turns grey and glum |
 | **Compacting** (X4) | Claude is compacting the conversation | Squashed under a press |
 
-Claude Code's transcripts do not record a session's context window. With the optional [status line bridge](#install-and-set-up) the board reads the real one from Claude Code. Without it, set `contextWindows` in the config for models whose sessions run on 1M (see [`example.config.yaml`](example.config.yaml)); otherwise the board assumes 200k until it sees a session go past it.
+Claude Code's transcripts do not record a session's context window. With the optional [status line bridge](#install-and-set-up) the board reads the real one from Claude Code. Without it, set `contextWindows` in the config for models whose sessions run on 1M (see [`example.config.yaml`](example.config.yaml)); otherwise the board assumes 200k until it sees a session go past it. If an account sets `autoCompactWindow` in its settings.json (or `CLAUDE_CODE_AUTO_COMPACT_WINDOW` in the settings' `env`) below the model's window, the board counts against that instead, since that is where Claude Code compacts.
 
 L1, a waving character in each account's colour, marks the accounts in **+ New**.
 
