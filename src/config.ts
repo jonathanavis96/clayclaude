@@ -86,6 +86,10 @@ export const ConfigSchema = z.object({
     serial: z.string().regex(ADB_SERIAL_RE).optional(),
     chromePackage: z.string().regex(/^[\w.]{1,100}$/).default('com.android.chrome'),
     kiosk: z.boolean().default(true),
+    // No prompt typed for this long: the tablet dims to dimPercent, then sleeps (0: never). The board's Settings override these.
+    dimAfterMinutes: z.number().int().min(0).max(1440).default(30),
+    dimPercent: z.number().int().min(1).max(100).default(10),
+    sleepAfterMinutes: z.number().int().min(0).max(1440).default(70),
   }).default({}),
   hotkey: z.string().regex(/^[#!^+<>*~$]*([A-Za-z0-9]|F\d{1,2})$/).default('#+t'),
   hotkeyScript: z.string().optional(),

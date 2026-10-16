@@ -5,6 +5,8 @@ export interface TranscriptInfo {
   lastResponseAt: number | null;
   /** Newest user entry of any kind (prompt or tool_result). */
   lastUserAt: number | null;
+  /** Newest prompt the person typed (a user entry that is not meta and not only tool results). */
+  lastPromptAt: number | null;
   model?: string;
   effort?: string;
   contextTokens: number | null;
@@ -51,7 +53,7 @@ const isLimitError = (e: any): boolean => {
 };
 
 export function extractTranscript(lines: string[]): TranscriptInfo {
-  const info: TranscriptInfo = { lastEntryAt: null, lastAssistantAt: null, lastResponseAt: null, lastUserAt: null, contextTokens: null, peakTokens: null, lastCompactAt: null, limitHit: false };
+  const info: TranscriptInfo = { lastEntryAt: null, lastAssistantAt: null, lastResponseAt: null, lastUserAt: null, lastPromptAt: null, contextTokens: null, peakTokens: null, lastCompactAt: null, limitHit: false };
   const pending = new Map<string, { name: string; summary: string; id: string; input: any }>();
   for (const line of lines) {
     let e: any;
@@ -104,7 +106,10 @@ export function extractTranscript(lines: string[]): TranscriptInfo {
         const blocks = Array.isArray(c) ? c : [];
         // A real prompt starts a new turn: anything still unresolved before it (a crash, a lost
         // tool_result, an interrupt) is not waiting on the user any more.
-        if (e.isMeta !== true && (typeof c === 'string' || blocks.some((b: any) => b?.type !== 'tool_result'))) pending.clear();
+        if (e.isMeta !== true && (typeof c === 'string' || blocks.some((b: any) => b?.type !== 'tool_result'))) {
+          pending.clear();
+          if (t !== null) info.lastPromptAt = t;
+        }
         for (const b of blocks) if (b?.type === 'tool_result') pending.delete(b.tool_use_id);
         break;
       }
