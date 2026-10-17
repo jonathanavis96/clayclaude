@@ -98,6 +98,29 @@ describe('TabletSleep', () => {
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
+  it('after a restart it puts back a screen an earlier run left dimmed or asleep', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cc-screen-'));
+    try {
+      const statePath = join(dir, 'state.json');
+      const a = rig({ statePath });
+      await a.s.tick(); a.at(30); await a.s.tick(); a.at(70); await a.s.tick();
+      expect(JSON.parse(readFileSync(statePath, 'utf8')).screenState).toEqual({ step: 'asleep', brightness: '180', mode: '1' });
+      const b = rig({ statePath });   // the first run died without stopping
+      expect(await b.s.tick()).toBe('awake');
+      expect(b.calls).toEqual(['input keyevent KEYCODE_WAKEUP', 'wm dismiss-keyguard',
+        'settings put system screen_brightness 180', 'settings put system screen_brightness_mode 1']);
+      expect(JSON.parse(readFileSync(statePath, 'utf8')).screenState).toBeNull();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('a clean stop puts the screen back', async () => {
+    const r = rig();
+    await r.s.tick(); r.at(30); await r.s.tick();
+    r.calls.length = 0;
+    await r.s.stop();
+    expect(r.calls).toEqual(['settings put system screen_brightness 180', 'settings put system screen_brightness_mode 1']);
+  });
+
   it('mergeScreenPrefs takes only whole, in-range values', () => {
     expect(mergeScreenPrefs(DEFAULTS, { dimPercent: 50 })).toEqual({ ...DEFAULTS, dimPercent: 50 });
     expect(mergeScreenPrefs(DEFAULTS, { dimAfterMinutes: -1 })).toBeUndefined();

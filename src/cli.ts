@@ -108,5 +108,5 @@ console.log(build.line);
 if (build.warning) console.warn(`clayclaude: warning: ${build.warning}`);
 if (cfg.lan.enabled) console.log(`LAN access on for: ${cfg.lan.hosts.join(', ')} (token required)`);
 // killChildren: an ssh still waiting on a hung host would otherwise outlive the daemon.
-const shutdown = async () => { sleeper.stop(); adb.stop(); collector.stop(); usage.stop(); killChildren(); await clayRoutes.close(); await srv.close(); process.exit(0); };
+const shutdown = async () => { await sleeper.stop(); adb.stop(); collector.stop(); usage.stop(); killChildren(); await clayRoutes.close(); await srv.close(); process.exit(0); };
 process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown); process.on('SIGHUP', shutdown); // HUP: the terminal or tmux pane it ran in closed

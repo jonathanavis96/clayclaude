@@ -14,6 +14,9 @@ import { readState, writeStateKey } from './dismissed.js';
  * The defaults come from the config (tablet.*); the board's Settings change them (GET/POST /api/screen), kept in
  * state.json under `screen`. The daemon start counts as activity, so a restart never dims or sleeps at once. Only a change
  * of step is sent: a failed adb call is logged and not retried until the next change.
+ *
+ * The step and the brightness from before a dim are kept in state.json too (`screenState`), so a daemon that stopped
+ * without putting the screen back (a crash) does it on its next start. A clean stop puts the screen back itself.
  */
 export interface ScreenPrefs { dimAfterMinutes: number; dimPercent: number; sleepAfterMinutes: number }
 
@@ -72,11 +75,23 @@ export class TabletSleep {
     this.run = o.run ?? ((args) => new Promise((res, rej) => execFile(o.adbBin, args, { timeout: 10_000 }, (e, out) => (e ? rej(e) : res(out)))));
     this.now = o.now ?? Date.now;
     this.log = o.log ?? ((m) => console.log(m));
-    this.p = (o.statePath && mergeScreenPrefs(o.defaults, readState(o.statePath).screen)) || { ...o.defaults };
+    const st = o.statePath ? readState(o.statePath) : {};
+    this.p = mergeScreenPrefs(o.defaults, st.screen) || { ...o.defaults };
+    const ss = st.screenState as { step?: unknown; brightness?: unknown; mode?: unknown } | null | undefined;
+    if (ss && (ss.step === 'dim' || ss.step === 'asleep')) {
+      if (typeof ss.brightness === 'string' && typeof ss.mode === 'string') this.saved = { brightness: ss.brightness, mode: ss.mode };
+      this.step = 'asleep';   // as far as is known: the first tick with a tablet wakes it and puts the brightness back
+    }
   }
 
   start() { this.timer = setInterval(() => void this.tick(), this.o.intervalMs ?? 30_000); this.timer.unref(); void this.tick(); }
-  stop() { clearInterval(this.timer); }
+  /** Stops the ticks and puts the screen back (awake, at its old brightness) if it is dimmed or asleep. */
+  async stop(): Promise<void> {
+    clearInterval(this.timer);
+    const back = () => this.go('awake', 0);
+    this.chain = this.chain.then(back, back);
+    await this.chain;
+  }
 
   prefs(): ScreenPrefs { return { ...this.p }; }
 
@@ -114,6 +129,10 @@ export class TabletSleep {
     const idle = now - this.lastActive;
     const { dimAfterMinutes: dim, sleepAfterMinutes: sleep } = this.p;
     const want: Step = sleep > 0 && idle >= sleep * 60_000 ? 'asleep' : dim > 0 && idle >= dim * 60_000 ? 'dim' : 'awake';
+    return this.go(want, idle);
+  }
+
+  private async go(want: Step, idle: number): Promise<Step | undefined> {
     if (want === this.step) return undefined;
     // No tablet yet: the step is not taken, so the first tick after it connects sends it.
     const serial = this.o.serial();
@@ -135,11 +154,18 @@ export class TabletSleep {
         if (/^\d+$/.test(s.mode)) await sh('settings', 'put', 'system', 'screen_brightness_mode', s.mode);
       }
       if (want === 'asleep') await sh('input', 'keyevent', 'KEYCODE_SLEEP');
+      this.keep();
       this.log(`clayclaude: tablet ${serial}: ${want === 'asleep' ? 'screen off' : want === 'dim' ? `dimmed to ${this.p.dimPercent}%` : 'screen on'} (${RANK[want] > RANK[from] ? `no prompt for ${Math.round(idle / 60_000)} min` : 'prompt typed or settings changed'})`);
     } catch (e) {
       this.log(`clayclaude: tablet ${serial}: ${from} → ${want} failed: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
     }
     return want;
+  }
+
+  private keep() {
+    if (!this.o.statePath) return;
+    try { writeStateKey(this.o.statePath, 'screenState', this.step === 'awake' ? null : { step: this.step, ...this.saved }); }
+    catch (e) { this.log(`clayclaude: could not save state.json: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`); }
   }
 
   private shell(serial: string) { return (...args: string[]) => this.run(['-s', serial, 'shell', ...args]); }
