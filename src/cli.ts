@@ -96,7 +96,8 @@ const adb = new AdbReverse(cfg.tablet.adb, srv.port, {
   onConnect: (serial) => {
     if (!kioskWants(cfg.tablet.serial, serial)) return;
     tablet = serial;
-    if (kiosk) { void sleeper.woke(); void kiosk.launch(serial); }
+    // The kiosk launch wakes the screen, which counts as activity; without it, any step due is sent now.
+    if (kiosk) { void sleeper.woke(); void kiosk.launch(serial); } else void sleeper.tick();
   },
 });
 usage.start(); collector.start(); adb.start(); sleeper.start();

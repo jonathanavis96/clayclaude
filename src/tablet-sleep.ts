@@ -84,11 +84,14 @@ export class TabletSleep {
   async setPrefs(over: unknown): Promise<ScreenPrefs | undefined> {
     const next = mergeScreenPrefs(this.p, over);
     if (!next) return undefined;
+    const redim = this.step === 'dim' && next.dimPercent !== this.p.dimPercent;
     this.p = next;
     if (this.o.statePath) {
       try { writeStateKey(this.o.statePath, 'screen', next); }
       catch (e) { this.log(`clayclaude: could not save state.json: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`); }
     }
+    // Already dimmed: the new percentage applies now, not at the next dim.
+    if (redim) this.chain = this.chain.then(() => this.dimTo(), () => this.dimTo());
     await this.tick();
     return this.prefs();
   }
@@ -112,17 +115,18 @@ export class TabletSleep {
     const { dimAfterMinutes: dim, sleepAfterMinutes: sleep } = this.p;
     const want: Step = sleep > 0 && idle >= sleep * 60_000 ? 'asleep' : dim > 0 && idle >= dim * 60_000 ? 'dim' : 'awake';
     if (want === this.step) return undefined;
+    // No tablet yet: the step is not taken, so the first tick after it connects sends it.
+    const serial = this.o.serial();
+    if (!serial) return undefined;
     const from = this.step;
     this.step = want;
-    const serial = this.o.serial();
-    if (!serial) return want;
-    const sh = (...args: string[]) => this.run(['-s', serial, 'shell', ...args]);
+    const sh = this.shell(serial);
     try {
       if (from === 'asleep') { await sh('input', 'keyevent', 'KEYCODE_WAKEUP'); await sh('wm', 'dismiss-keyguard').catch(() => ''); }
       if (want === 'dim' && !this.saved) {
         this.saved = { brightness: (await sh('settings', 'get', 'system', 'screen_brightness')).trim(), mode: (await sh('settings', 'get', 'system', 'screen_brightness_mode')).trim() };
         await sh('settings', 'put', 'system', 'screen_brightness_mode', '0');
-        await sh('settings', 'put', 'system', 'screen_brightness', String(Math.max(1, Math.round(255 * this.p.dimPercent / 100))));
+        await sh('settings', 'put', 'system', 'screen_brightness', this.dimLevel());
       }
       if (want === 'awake' && this.saved) {
         const s = this.saved;
@@ -131,11 +135,22 @@ export class TabletSleep {
         if (/^\d+$/.test(s.mode)) await sh('settings', 'put', 'system', 'screen_brightness_mode', s.mode);
       }
       if (want === 'asleep') await sh('input', 'keyevent', 'KEYCODE_SLEEP');
-      this.log(`clayclaude: tablet ${serial}: ${want === 'asleep' ? 'screen off' : want === 'dim' ? `dimmed to ${this.p.dimPercent}%` : 'screen on'} (${RANK[want] > RANK[from] ? `no prompt for ${Math.round(idle / 60_000)} min` : 'prompt typed'})`);
+      this.log(`clayclaude: tablet ${serial}: ${want === 'asleep' ? 'screen off' : want === 'dim' ? `dimmed to ${this.p.dimPercent}%` : 'screen on'} (${RANK[want] > RANK[from] ? `no prompt for ${Math.round(idle / 60_000)} min` : 'prompt typed or settings changed'})`);
     } catch (e) {
       this.log(`clayclaude: tablet ${serial}: ${from} → ${want} failed: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
     }
     return want;
+  }
+
+  private shell(serial: string) { return (...args: string[]) => this.run(['-s', serial, 'shell', ...args]); }
+  private dimLevel() { return String(Math.max(1, Math.round(255 * this.p.dimPercent / 100))); }
+
+  /** Sets the dimmed brightness again, while dimmed. */
+  private async dimTo(): Promise<void> {
+    const serial = this.o.serial();
+    if (this.step !== 'dim' || !serial) return;
+    try { await this.shell(serial)('settings', 'put', 'system', 'screen_brightness', this.dimLevel()); }
+    catch (e) { this.log(`clayclaude: tablet ${serial}: dim to ${this.p.dimPercent}% failed: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`); }
   }
 }
 

@@ -10,6 +10,7 @@ const MIN = 60_000;
 const DEFAULTS = { dimAfterMinutes: 30, dimPercent: 10, sleepAfterMinutes: 70 };
 
 function rig(o: { statePath?: string; serial?: string | undefined } = {}) {
+  let serial = 'serial' in o ? o.serial : 'TAB1';
   let now = 1_800_000_000_000;
   const calls: string[] = [];
   const sessions: Partial<Session>[] = [{ lastPromptAt: now - 5 * MIN }];
@@ -20,9 +21,9 @@ function rig(o: { statePath?: string; serial?: string | undefined } = {}) {
     if (sh === 'settings get system screen_brightness_mode') return '1\n';
     return '';
   };
-  const s = new TabletSleep({ adbBin: 'adb', serial: () => ('serial' in o ? o.serial : 'TAB1'), sessions: () => sessions as Session[],
+  const s = new TabletSleep({ adbBin: 'adb', serial: () => serial, sessions: () => sessions as Session[],
     defaults: DEFAULTS, statePath: o.statePath, run, now: () => now, log: () => {} });
-  return { s, calls, sessions, at: (m: number) => { now = 1_800_000_000_000 + m * MIN; }, now: () => now };
+  return { s, calls, sessions, connect: (v: string) => { serial = v; }, at: (m: number) => { now = 1_800_000_000_000 + m * MIN; }, now: () => now };
 }
 
 describe('TabletSleep', () => {
@@ -66,11 +67,22 @@ describe('TabletSleep', () => {
     expect(r.calls).toEqual(['input keyevent KEYCODE_SLEEP']);
   });
 
-  it('sends nothing before a tablet has connected', async () => {
+  it('sends nothing before a tablet has connected, then sends the step that is due', async () => {
     const r = rig({ serial: undefined });
     await r.s.tick(); r.at(80);
-    expect(await r.s.tick()).toBe('asleep');
+    expect(await r.s.tick()).toBeUndefined();
     expect(r.calls).toEqual([]);
+    r.connect('TAB1');
+    expect(await r.s.tick()).toBe('asleep');
+    expect(r.calls).toEqual(['input keyevent KEYCODE_SLEEP']);
+  });
+
+  it('a new dim percentage applies at once while dimmed', async () => {
+    const r = rig();
+    await r.s.tick(); r.at(30); await r.s.tick();
+    r.calls.length = 0;
+    expect(await r.s.setPrefs({ dimPercent: 50 })).toEqual({ ...DEFAULTS, dimPercent: 50 });
+    expect(r.calls).toEqual(['settings put system screen_brightness 128']);
   });
 
   it('keeps board changes in state.json and refuses bad values', async () => {
