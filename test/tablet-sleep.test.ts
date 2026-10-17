@@ -87,6 +87,19 @@ describe('TabletSleep', () => {
     expect(r.calls).toEqual(['settings put system screen_brightness 128']);
   });
 
+  it('a new dim percentage that fails to send is sent on the next tick', async () => {
+    const r = rig();
+    await r.s.tick(); r.at(30); await r.s.tick();
+    r.fail(true);
+    await r.s.setPrefs({ dimPercent: 50 });
+    r.fail(false); r.calls.length = 0;
+    r.at(31); expect(await r.s.tick()).toBeUndefined();
+    expect(r.calls).toEqual(['settings put system screen_brightness 128']);
+    r.calls.length = 0;
+    r.at(32); await r.s.tick();
+    expect(r.calls).toEqual([]);
+  });
+
   it('keeps board changes in state.json and refuses bad values', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'cc-screen-'));
     try {

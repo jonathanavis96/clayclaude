@@ -66,6 +66,8 @@ export class TabletSleep {
   private step: Step = 'awake';
   /** Brightness and mode from before the dim, to put back on wake. */
   private saved?: { brightness: string; mode: string };
+  /** A new dim percentage that has not reached the tablet yet. */
+  private redim = false;
   private p: ScreenPrefs;
   private timer?: NodeJS.Timeout;
   /** One step change at a time: a tick that lands while adb is still busy waits for it. */
@@ -129,6 +131,7 @@ export class TabletSleep {
     const idle = now - this.lastActive;
     const { dimAfterMinutes: dim, sleepAfterMinutes: sleep } = this.p;
     const want: Step = sleep > 0 && idle >= sleep * 60_000 ? 'asleep' : dim > 0 && idle >= dim * 60_000 ? 'dim' : 'awake';
+    if (want === 'dim' && this.step === 'dim' && this.redim) await this.dimTo();
     return this.go(want, idle);
   }
 
@@ -177,8 +180,10 @@ export class TabletSleep {
   /** Sets the dimmed brightness again, while dimmed. */
   private async dimTo(): Promise<void> {
     const serial = this.o.serial();
-    if (this.step !== 'dim' || !serial) return;
-    try { await this.shell(serial)('settings', 'put', 'system', 'screen_brightness', this.dimLevel()); }
+    // Pending until it is sent, so a failed write is tried again on the next tick.
+    this.redim = this.step === 'dim';
+    if (!this.redim || !serial) return;
+    try { await this.shell(serial)('settings', 'put', 'system', 'screen_brightness', this.dimLevel()); this.redim = false; }
     catch (e) { this.log(`clayclaude: tablet ${serial}: dim to ${this.p.dimPercent}% failed: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`); }
   }
 }
