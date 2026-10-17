@@ -142,8 +142,9 @@ export class TabletSleep {
     const sh = this.shell(serial);
     try {
       if (from === 'asleep') { await sh('input', 'keyevent', 'KEYCODE_WAKEUP'); await sh('wm', 'dismiss-keyguard').catch(() => ''); }
-      if (want === 'dim' && !this.saved) {
-        this.saved = { brightness: (await sh('settings', 'get', 'system', 'screen_brightness')).trim(), mode: (await sh('settings', 'get', 'system', 'screen_brightness_mode')).trim() };
+      if (want === 'dim') {
+        // The first reading is the one to restore; a retry after a failed dim keeps it and sends the dim again.
+        this.saved ??= { brightness: (await sh('settings', 'get', 'system', 'screen_brightness')).trim(), mode: (await sh('settings', 'get', 'system', 'screen_brightness_mode')).trim() };
         await sh('settings', 'put', 'system', 'screen_brightness_mode', '0');
         await sh('settings', 'put', 'system', 'screen_brightness', this.dimLevel());
       }
