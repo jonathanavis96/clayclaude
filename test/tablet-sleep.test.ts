@@ -14,16 +14,18 @@ function rig(o: { statePath?: string; serial?: string | undefined } = {}) {
   let now = 1_800_000_000_000;
   const calls: string[] = [];
   const sessions: Partial<Session>[] = [{ lastPromptAt: now - 5 * MIN }];
+  let failing = false;
   const run = async (args: string[]) => {
     const sh = args.slice(3).join(' ');
     calls.push(sh);
+    if (failing) throw new Error('device offline');
     if (sh === 'settings get system screen_brightness') return '180\n';
     if (sh === 'settings get system screen_brightness_mode') return '1\n';
     return '';
   };
   const s = new TabletSleep({ adbBin: 'adb', serial: () => serial, sessions: () => sessions as Session[],
     defaults: DEFAULTS, statePath: o.statePath, run, now: () => now, log: () => {} });
-  return { s, calls, sessions, connect: (v: string) => { serial = v; }, at: (m: number) => { now = 1_800_000_000_000 + m * MIN; }, now: () => now };
+  return { s, calls, sessions, connect: (v: string) => { serial = v; }, fail: (v: boolean) => { failing = v; }, at: (m: number) => { now = 1_800_000_000_000 + m * MIN; }, now: () => now };
 }
 
 describe('TabletSleep', () => {
@@ -119,6 +121,16 @@ describe('TabletSleep', () => {
     r.calls.length = 0;
     await r.s.stop();
     expect(r.calls).toEqual(['settings put system screen_brightness 180', 'settings put system screen_brightness_mode 1']);
+  });
+
+  it('a failed step is tried again, so a reconnected tablet still gets it', async () => {
+    const r = rig();
+    await r.s.tick(); r.at(30);
+    r.fail(true);
+    expect(await r.s.tick()).toBeUndefined();
+    r.fail(false); r.calls.length = 0;
+    expect(await r.s.tick()).toBe('dim');
+    expect(r.calls).toContain('settings put system screen_brightness 26');
   });
 
   it('mergeScreenPrefs takes only whole, in-range values', () => {

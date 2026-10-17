@@ -149,17 +149,19 @@ export class TabletSleep {
       }
       if (want === 'awake' && this.saved) {
         const s = this.saved;
-        this.saved = undefined;
         if (/^\d+$/.test(s.brightness)) await sh('settings', 'put', 'system', 'screen_brightness', s.brightness);
         if (/^\d+$/.test(s.mode)) await sh('settings', 'put', 'system', 'screen_brightness_mode', s.mode);
+        this.saved = undefined;
       }
       if (want === 'asleep') await sh('input', 'keyevent', 'KEYCODE_SLEEP');
       this.keep();
       this.log(`clayclaude: tablet ${serial}: ${want === 'asleep' ? 'screen off' : want === 'dim' ? `dimmed to ${this.p.dimPercent}%` : 'screen on'} (${RANK[want] > RANK[from] ? `no prompt for ${Math.round(idle / 60_000)} min` : 'prompt typed or settings changed'})`);
     } catch (e) {
+      // Not taken (the tablet unplugged, say): the next tick tries again, so a reconnect gets the step that is due.
+      this.step = from;
       this.log(`clayclaude: tablet ${serial}: ${from} → ${want} failed: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
     }
-    return want;
+    return this.step === want ? want : undefined;
   }
 
   private keep() {
