@@ -22,3 +22,11 @@ export async function getJson<T>(path: string, f: Fetch = fetch): Promise<T | nu
     return r.ok || r.status < 500 ? ((await r.json()) as T) : null;
   } catch { return null; }
 }
+
+/** POST JSON to a daemon route other than /api/action; null when the daemon is unreachable or the reply is not JSON. */
+export async function postJson<T>(path: string, body: object, f: Fetch = fetch): Promise<T | null> {
+  try {
+    const r = await f(path, { method: 'POST', headers: { 'content-type': 'application/json', 'x-clayclaude': '1' }, body: JSON.stringify(body) });
+    return (await r.json()) as T;
+  } catch { return null; }
+}

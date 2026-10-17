@@ -87,6 +87,8 @@ export interface Session {
   currentAction?: string;
   question?: string;
   lastAssistantAt?: number;
+  /** When the person last typed a prompt into the session (ms epoch); the tablet sleeps after a long gap (tablet-sleep.ts). */
+  lastPromptAt?: number;
   cacheExpiresAt?: number;
   overContext: boolean;   // contextPct >= 85 (X2 modifier)
   hostOnline: boolean;

@@ -206,14 +206,16 @@ describe('Collector', () => {
 
   it('reports a remote host\'s timestamps on the daemon\'s clock, so ages and the cache timer are right', async () => {
     const remoteNow = NOW - 60_000; // remote clock 60 s behind
+    const prompt = JSON.stringify({ type: 'user', timestamp: new Date(remoteNow - 8000).toISOString(), message: { content: 'go' } });
     const entry = JSON.stringify({ type: 'assistant', timestamp: new Date(remoteNow - 5000).toISOString(), message: { content: [{ type: 'text', text: 'hi' }] } });
     const c = new Collector(cfg, { now: () => NOW, probe: async (h) => h.id === 'box'
-      ? { ...snap('~/.claude-w', [{ ...reg('b', true, { status: undefined }), transcript: [entry] }]), nowMs: remoteNow }
+      ? { ...snap('~/.claude-w', [{ ...reg('b', true, { status: undefined }), transcript: [prompt, entry] }]), nowMs: remoteNow }
       : snap('/c/me', []) });
     const [s] = await c.pollOnce();
     expect(s.state).toBe('working');
     expect(s.stateSince).toBe(NOW - 5000);
     expect(s.lastAssistantAt).toBe(NOW - 5000);
+    expect(s.lastPromptAt).toBe(NOW - 8000);
     expect(s.cacheExpiresAt).toBe(NOW - 5000 + 60 * 60_000);
   });
 

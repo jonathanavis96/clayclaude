@@ -8,6 +8,14 @@ All notable changes to clayclaude are listed here. The format follows
 
 ### Added
 
+- **The tablet dims and sleeps when you stop typing.** With no prompt typed to
+  Claude in any session for 30 minutes the tablet dims to 10% brightness, and
+  after 70 minutes its screen goes off; the next prompt you type turns it back
+  on at its old brightness. The times and the dimmed brightness are in the
+  board's Settings (Tablet screen), with defaults in the config
+  (`tablet.dimAfterMinutes`, `tablet.dimPercent`, `tablet.sleepAfterMinutes`;
+  0 turns a step off).
+
 - **Status line bridge: the real context window.** Setup offers (off unless you
   say yes, with the diff shown and a backup saved) a status line command that
   records each session's context window from what Claude Code gives its status

@@ -13,17 +13,23 @@ export interface PublicConfig {
   lan: { enabled: boolean };
 }
 
+/** The tablet's dim and sleep settings (GET /api/screen); kept by the daemon, which drives the tablet over adb. */
+export interface ScreenSettings { enabled: boolean; dimAfterMinutes?: number; dimPercent?: number; sleepAfterMinutes?: number }
+
 export interface SettingsView {
   prefs: AppPrefs; clay: ClayPrefs; config: PublicConfig | null;
   clayStatus: { mode: string; reason: string; baked: number; total: number };
   effective: { quickReplies: string[]; confirmBeforeSend: boolean; stoppedRetentionMs: number };
   /** This page's build and the one the daemon serves now (/api/version), so a stale page can be told apart (spec §5.1). */
   build?: { page: Stamp; served: Stamp | null };
+  screen?: ScreenSettings | null;
 }
 
 const sel = (name: string, cur: string | number, choices: [string, string][]) =>
   `<select data-pref="${name}">${choices.map(([v, l]) => `<option value="${esc(v)}"${String(cur) === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
 const chk = (name: string, on: boolean) => `<input type="checkbox" data-pref="${name}"${on ? ' checked' : ''}>`;
+const num = (name: string, cur: number | undefined, min: number, max: number) =>
+  `<input type="number" inputmode="numeric" data-screen="${name}" min="${min}" max="${max}" step="1" value="${cur ?? ''}">`;
 const row = (label: string, control: string, hint = '') => `<label class="srow"><span>${esc(label)}${hint ? `<small>${esc(hint)}</small>` : ''}</span>${control}</label>`;
 
 export function settingsHtml(v: SettingsView): string {
@@ -51,6 +57,10 @@ export function settingsHtml(v: SettingsView): string {
       ${row('From', `<input type="time" data-pref="night.from" value="${esc(p.night.from)}">`)}
       ${row('Until', `<input type="time" data-pref="night.to" value="${esc(p.night.to)}">`)}
       ${row('Darkness', `<input type="range" min="10" max="90" step="5" data-pref="night.level" value="${Math.round(p.night.level * 100)}">`)}</section>
+    ${v.screen?.enabled ? `<section><h3>Tablet screen</h3>
+      ${row('Dim after (minutes)', num('dimAfterMinutes', v.screen.dimAfterMinutes, 0, 1440), 'With no prompt typed to Claude; 0 never dims')}
+      ${row('Dimmed brightness (%)', num('dimPercent', v.screen.dimPercent, 1, 100))}
+      ${row('Sleep after (minutes)', num('sleepAfterMinutes', v.screen.sleepAfterMinutes, 0, 1440), 'Screen off; the next prompt turns it back on. 0 never sleeps')}</section>` : ''}
     <section><h3>Answering</h3>
       ${row('Confirm before sending', chk('confirmBeforeSend', v.effective.confirmBeforeSend))}
       ${row('Quick replies', `<input type="text" data-pref="quickReplies" value="${esc(v.effective.quickReplies.join(', '))}">`, 'Comma separated')}</section>

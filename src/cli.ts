@@ -13,6 +13,7 @@ import { startServer } from './server.js';
 import { AdbReverse } from './adb.js';
 import { daemonAdb } from './adbpick.js';
 import { KioskLauncher, createKioskRoute, kioskWants } from './kiosk.js';
+import { TabletSleep, createScreenRoute } from './tablet-sleep.js';
 import { dispatch, USAGE } from './commands/index.js';
 import { createClayRoutes } from './clay/routes.js';
 import { createActionService } from './actions/service.js';
@@ -81,15 +82,25 @@ const actions = createActionService({
 });
 const clayRoutes = createClayRoutes({ webRoot });   // spec §7.3 "Baked by PC": /clay/status and /clay/sheet
 let kiosk: KioskLauncher | undefined;   // set once the server knows its port
-const handlers = [createKioskRoute(() => kiosk), createActionRoutes(actions, { mode: 'live', publicConfig: () => actions.publicConfig() }), clayRoutes.handler];
+// The tablet dims, then sleeps, with no prompt typed for a while, and wakes at the next one (tablet-sleep.ts).
+let tablet: string | undefined;
+const { dimAfterMinutes, dimPercent, sleepAfterMinutes } = cfg.tablet;
+const sleeper = new TabletSleep({ adbBin: cfg.tablet.adb, serial: () => tablet, sessions: () => collector.sessions(),
+  defaults: { dimAfterMinutes, dimPercent, sleepAfterMinutes }, statePath: join(dirname(configPath), 'state.json') });
+const handlers = [createKioskRoute(() => kiosk), createScreenRoute(() => sleeper), createActionRoutes(actions, { mode: 'live', publicConfig: () => actions.publicConfig() }), clayRoutes.handler];
 const srv = await startServer({ cfg, collector, usage, webRoot, handlers, names }).catch(startFailed);
 kiosk = cfg.tablet.kiosk ? new KioskLauncher({ adbBin: cfg.tablet.adb, port: srv.port, chromePackage: cfg.tablet.chromePackage }) : undefined;
 const adbCheck = daemonAdb(cfg.tablet.adb);   // one adb server only: the daemon runs its configured adb and never another
 const adb = new AdbReverse(cfg.tablet.adb, srv.port, {
   other: adbCheck.other,
-  onConnect: kiosk ? (serial) => { if (kioskWants(cfg.tablet.serial, serial)) void kiosk.launch(serial); } : undefined,
+  onConnect: (serial) => {
+    if (!kioskWants(cfg.tablet.serial, serial)) return;
+    tablet = serial;
+    // The kiosk launch wakes the screen, which counts as activity; without it, any step due is sent now.
+    if (kiosk) { void sleeper.woke(); void kiosk.launch(serial); } else void sleeper.tick();
+  },
 });
-usage.start(); collector.start(); adb.start();
+usage.start(); collector.start(); adb.start(); sleeper.start();
 void adbCheck.clash().then((w) => { if (w) console.warn(w); });
 console.log(`clayclaude on http://127.0.0.1:${srv.port}`);
 const build = buildReport(webRoot, fileURLToPath(new URL('../', import.meta.url)));
@@ -97,5 +108,5 @@ console.log(build.line);
 if (build.warning) console.warn(`clayclaude: warning: ${build.warning}`);
 if (cfg.lan.enabled) console.log(`LAN access on for: ${cfg.lan.hosts.join(', ')} (token required)`);
 // killChildren: an ssh still waiting on a hung host would otherwise outlive the daemon.
-const shutdown = async () => { adb.stop(); collector.stop(); usage.stop(); killChildren(); await clayRoutes.close(); await srv.close(); process.exit(0); };
+const shutdown = async () => { await sleeper.stop(); adb.stop(); collector.stop(); usage.stop(); killChildren(); await clayRoutes.close(); await srv.close(); process.exit(0); };
 process.on('SIGINT', shutdown); process.on('SIGTERM', shutdown); process.on('SIGHUP', shutdown); // HUP: the terminal or tmux pane it ran in closed

@@ -195,5 +195,6 @@ export class Collector extends EventEmitter {
 function shift(s: Session, by: number) {
   s.stateSince += by;
   if (s.lastAssistantAt !== undefined) s.lastAssistantAt += by;
+  if (s.lastPromptAt !== undefined) s.lastPromptAt += by;
   if (s.cacheExpiresAt !== undefined) s.cacheExpiresAt += by;
 }

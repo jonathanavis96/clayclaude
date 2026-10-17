@@ -186,6 +186,7 @@ export function deriveSession(i: DeriveInput, now: number): Session | null {
     ...(tokens !== null ? { contextTokens: tokens } : {}), contextWindow: window,
     currentAction: t.currentAction, question,
     lastAssistantAt: t.lastAssistantAt ?? undefined,
+    ...(t.lastPromptAt !== null ? { lastPromptAt: t.lastPromptAt } : {}),
     cacheExpiresAt: t.lastResponseAt === null ? undefined : t.lastResponseAt + i.cacheTtlMinutes * 60_000,
     overContext: (contextPct ?? 0) >= 85,
     hostOnline: i.hostOnline, lastSeen: i.lastSeen,

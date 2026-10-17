@@ -102,6 +102,11 @@ tablet:
   # serial: R52N1234567     # the tablet setup chose, when more than one device is plugged in
   chromePackage: com.android.chrome   # the Chrome package on the tablet
   kiosk: true               # open the board full screen whenever the tablet connects; false turns it off
+  # No prompt typed to Claude for a while: the screen dims, then goes off; the next prompt turns it back on. 0 turns a
+  # step off. These are the defaults: the board's Settings (Tablet screen) change them.
+  dimAfterMinutes: 30
+  dimPercent: 10            # the dimmed brightness, % of full
+  sleepAfterMinutes: 70
 
 # Windows only: the AutoHotkey v2 hotkey that hands your PC keyboard and mouse to the tablet.
 # AutoHotkey syntax: # is Win, + is Shift, ^ is Ctrl, ! is Alt. Setup asks for the hotkey, writes it into the
