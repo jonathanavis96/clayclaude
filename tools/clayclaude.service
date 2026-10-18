@@ -8,9 +8,12 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# Written by tools/live-daemon.sh: CLAYCLAUDE_WT (the built worktree to serve) and CLAYCLAUDE_NODE (its node binary;
-# a systemd user unit gets no nvm PATH).
+# Written by tools/live-daemon.sh: CLAYCLAUDE_WT (the built worktree to serve), CLAYCLAUDE_NODE (its node binary; a
+# systemd user unit gets no nvm PATH) and the variables it carries over from the shell that ran it (see the script).
+# The optional env file is yours: NAME=value lines that should reach the daemon on every start, such as a token for
+# a `tokenEnv` or CLAYCLAUDE_CHROMIUM. It is read second, so it wins.
 EnvironmentFile=%h/.config/clayclaude/daemon.env
+EnvironmentFile=-%h/.config/clayclaude/env
 # The same guard live-daemon.sh runs: never poll oauth usage with refresh on.
 ExecStartPre=/bin/sh -c 'exec "$CLAYCLAUDE_NODE" "$CLAYCLAUDE_WT/tools/refresh-guard.mjs" "$HOME/.config/clayclaude/config.yaml"'
 ExecStart=/bin/sh -c 'cd "$CLAYCLAUDE_WT" && exec "$CLAYCLAUDE_NODE" dist/cli.js serve'
