@@ -1,9 +1,11 @@
 // tools/live-daemon.sh restarts the real daemon, so it must refuse a config that would poll usage with OAuth refresh
 // on: every account whose usage provider is oauth, including the default when an account has no `usage` key at all,
 // must say `refresh: false`. The refusal comes before anything is stopped or started.
+// Every run sets CLAYCLAUDE_NO_SYSTEMD or stubs systemctl: a substitute HOME does not select another systemd user
+// manager, so a real `systemctl --user` call would stop the developer's own clayclaude.service.
 import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -20,7 +22,7 @@ function run(cfgText: string) {
   mkdirSync(join(wt, 'dist'));
   writeFileSync(join(wt, 'dist', 'cli.js'), 'process.exit(0)\n');
   return spawnSync('bash', [join(ROOT, 'tools', 'live-daemon.sh'), wt, join(home, 'serve.log')],
-    { encoding: 'utf8', env: { ...process.env, HOME: home }, timeout: 10_000 });
+    { encoding: 'utf8', env: { ...process.env, HOME: home, CLAYCLAUDE_NO_SYSTEMD: '1' }, timeout: 10_000 });
 }
 
 describe('live-daemon.sh refresh guard', () => {
@@ -74,11 +76,59 @@ describe('live-daemon.sh first start', () => {
     writeFileSync(join(wt, 'dist', 'cli.js'), 'process.exit(0)\n');
     const log = join(home, 'logs', 'nested', 'serve.log');
     const r = spawnSync('bash', [join(ROOT, 'tools', 'live-daemon.sh'), wt, log],
-      { encoding: 'utf8', env: { ...process.env, HOME: home, PATH: `${stubs()}:${process.env.PATH}` }, timeout: 10_000 });
+      { encoding: 'utf8', env: { ...process.env, HOME: home, PATH: `${stubs()}:${process.env.PATH}`, CLAYCLAUDE_NO_SYSTEMD: '1' }, timeout: 10_000 });
     expect(r.stderr).not.toMatch(/No such file/);
     expect(r.status).toBe(0);
     expect(existsSync(log)).toBe(true);
     expect(readFileSync(log, 'utf8')).toMatch(/^=== .* live-daemon: node /);
     expect(r.stdout).toMatch(/^=== .* live-daemon: node /m);
+  });
+});
+
+describe('live-daemon.sh under systemd', () => {
+  it('installs the unit, carries the environment the daemon reads, and restarts the unit', () => {
+    const home = mkdtempSync(join(tmpdir(), 'cc-live-home-'));
+    mkdirSync(join(home, '.config', 'clayclaude'), { recursive: true });
+    writeFileSync(join(home, '.config', 'clayclaude', 'config.yaml'),
+      config(acct('a', ', usage: {provider: none}') + acct('t', ', usage: {provider: token, tokenEnv: FOO_TOKEN}')));
+    const wt = mkdtempSync(join(tmpdir(), 'cc-live-wt-'));
+    mkdirSync(join(wt, 'dist'));
+    writeFileSync(join(wt, 'dist', 'cli.js'), 'process.exit(0)\n');
+    mkdirSync(join(wt, 'tools'));
+    copyFileSync(join(ROOT, 'tools', 'clayclaude.service'), join(wt, 'tools', 'clayclaude.service'));
+    // A stub systemctl records its calls; the real user manager is never reached.
+    const bin = mkdtempSync(join(tmpdir(), 'cc-live-bin-'));
+    const stub = (name: string, body: string) => { writeFileSync(join(bin, name), `#!/usr/bin/env bash\n${body}\n`); chmodSync(join(bin, name), 0o755); };
+    stub('systemctl', `echo "$*" >> "${join(home, 'systemctl.log')}"`);
+    stub('curl', 'echo ok');
+    stub('ss', 'exit 0');
+    stub('sleep', 'exit 0');
+    // run-locked's temporary adb directory heads PATH; it is gone by the time systemd restarts the daemon.
+    const env: Record<string, string | undefined> = { ...process.env, HOME: home, PATH: `/tmp/run-locked-adb:${bin}:${process.env.PATH}`,
+      CLAYCLAUDE_TABLET_BINDIR: '/tmp/run-locked-adb',
+      FOO_TOKEN: 'a"b$c\\d', CLAYCLAUDE_CHROMIUM: '/x/chrome', WSL_DISTRO_NAME: 'Ubuntu', UNRELATED_SECRET: 'no' };
+    delete env.CLAYCLAUDE_NO_SYSTEMD;
+    const r = spawnSync('bash', [join(ROOT, 'tools', 'live-daemon.sh'), wt, join(home, 'ignored.log')], { encoding: 'utf8', env, timeout: 10_000 });
+    expect(r.stderr).toMatch(/ignoring/);
+    expect(r.status).toBe(0);
+
+    const calls = readFileSync(join(home, 'systemctl.log'), 'utf8').trim().split('\n');
+    expect(calls).toEqual(['--user show-environment', '--user stop clayclaude.service', '--user daemon-reload',
+      '--user enable --quiet clayclaude.service', '--user start clayclaude.service']);
+    expect(readFileSync(join(home, '.config', 'systemd', 'user', 'clayclaude.service'), 'utf8'))
+      .toBe(readFileSync(join(ROOT, 'tools', 'clayclaude.service'), 'utf8'));
+
+    const envFile = join(home, '.config', 'clayclaude', 'daemon.env');
+    expect(statSync(envFile).mode & 0o777).toBe(0o600);
+    const lines = readFileSync(envFile, 'utf8').split('\n');
+    expect(lines).toContain(`CLAYCLAUDE_WT="${wt}"`);
+    expect(lines).toContain('FOO_TOKEN="a\\"b\\$c\\\\d"');
+    expect(lines).toContain('CLAYCLAUDE_CHROMIUM="/x/chrome"');
+    expect(lines).toContain('WSL_DISTRO_NAME="Ubuntu"');
+    expect(lines).toContain(`PATH="${bin}:${process.env.PATH}"`);
+    expect(lines.some((l) => l.startsWith('CLAYCLAUDE_TABLET_BINDIR='))).toBe(false);
+    expect(lines.some((l) => l.startsWith('UNRELATED_SECRET='))).toBe(false);
+    expect(existsSync(join(home, '.local', 'state', 'clayclaude', 'serve.log'))).toBe(true);
+    expect(existsSync(join(home, 'ignored.log'))).toBe(false);
   });
 });
