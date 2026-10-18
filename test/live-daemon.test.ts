@@ -103,7 +103,9 @@ describe('live-daemon.sh under systemd', () => {
     stub('curl', 'echo ok');
     stub('ss', 'exit 0');
     stub('sleep', 'exit 0');
-    const env: Record<string, string | undefined> = { ...process.env, HOME: home, PATH: `${bin}:${process.env.PATH}`,
+    // run-locked's temporary adb directory heads PATH; it is gone by the time systemd restarts the daemon.
+    const env: Record<string, string | undefined> = { ...process.env, HOME: home, PATH: `/tmp/run-locked-adb:${bin}:${process.env.PATH}`,
+      CLAYCLAUDE_TABLET_BINDIR: '/tmp/run-locked-adb',
       FOO_TOKEN: 'a"b$c\\d', CLAYCLAUDE_CHROMIUM: '/x/chrome', WSL_DISTRO_NAME: 'Ubuntu', UNRELATED_SECRET: 'no' };
     delete env.CLAYCLAUDE_NO_SYSTEMD;
     const r = spawnSync('bash', [join(ROOT, 'tools', 'live-daemon.sh'), wt, join(home, 'ignored.log')], { encoding: 'utf8', env, timeout: 10_000 });
@@ -123,7 +125,8 @@ describe('live-daemon.sh under systemd', () => {
     expect(lines).toContain('FOO_TOKEN="a\\"b\\$c\\\\d"');
     expect(lines).toContain('CLAYCLAUDE_CHROMIUM="/x/chrome"');
     expect(lines).toContain('WSL_DISTRO_NAME="Ubuntu"');
-    expect(lines.some((l) => l.startsWith('PATH="'))).toBe(true);
+    expect(lines).toContain(`PATH="${bin}:${process.env.PATH}"`);
+    expect(lines.some((l) => l.startsWith('CLAYCLAUDE_TABLET_BINDIR='))).toBe(false);
     expect(lines.some((l) => l.startsWith('UNRELATED_SECRET='))).toBe(false);
     expect(existsSync(join(home, '.local', 'state', 'clayclaude', 'serve.log'))).toBe(true);
     expect(existsSync(join(home, 'ignored.log'))).toBe(false);

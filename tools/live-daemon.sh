@@ -63,6 +63,10 @@ if [ -n "$use_systemd" ]; then
   # (CLAYCLAUDE_CHROMIUM, the probe's URL overrides), and each variable a `tokenEnv:` in the config names. It holds a
   # token when one is set that way, so it is written private. Settings that should outlive this shell go in
   # ~/.config/clayclaude/env, which the unit reads after daemon.env.
+  # run-locked's adb directory heads PATH and is deleted when it returns; a restart must not find it there.
+  if [ -n "${CLAYCLAUDE_TABLET_BINDIR:-}" ]; then
+    PATH=":$PATH:"; PATH="${PATH//:$CLAYCLAUDE_TABLET_BINDIR:/:}"; PATH="${PATH#:}"; PATH="${PATH%:}"
+  fi
   q() { local v="${!1}"; v="${v//\\/\\\\}"; v="${v//\"/\\\"}"; v="${v//\$/\\\$}"; printf '%s="%s"\n' "$1" "$v"; }
   token_vars=" $(grep -o "tokenEnv:[[:space:]]*[\"']\{0,1\}[A-Za-z_][A-Za-z0-9_]*" "$cfg" | sed "s/.*[[:space:]\"':]//" | tr '\n' ' ' || true) "
   (
@@ -74,7 +78,7 @@ if [ -n "$use_systemd" ]; then
     q CLAYCLAUDE_WT; q CLAYCLAUDE_NODE
     for n in $(compgen -e); do
       case "$n" in
-        CLAYCLAUDE_WT|CLAYCLAUDE_NODE|CLAYCLAUDE_NO_SYSTEMD|CLAYCLAUDE_TABLET_LOCK_HELD) ;;
+        CLAYCLAUDE_WT|CLAYCLAUDE_NODE|CLAYCLAUDE_NO_SYSTEMD|CLAYCLAUDE_TABLET_LOCK_HELD|CLAYCLAUDE_TABLET_BINDIR) ;;
         CLAYCLAUDE_*|PATH|WSL_DISTRO_NAME|PLAYWRIGHT_BROWSERS_PATH) q "$n" ;;
         *) case "$token_vars" in *" $n "*) q "$n" ;; esac ;;
       esac

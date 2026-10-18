@@ -189,9 +189,9 @@ JS
     # The child must not inherit the lock's fd: anything it leaves running (a demo server, a tmux server) would
     # otherwise hold the tablet lock until it exits, long after this run-locked has returned.
     if [ -n "${lockfd:-}" ]; then
-      PATH="$bindir:$PATH" ADB="$ADB" TABLET_SERIAL="$SERIAL" CLAYCLAUDE_TABLET_LOCK_HELD=1 "$@" {lockfd}>&- || rc=$?
+      PATH="$bindir:$PATH" CLAYCLAUDE_TABLET_BINDIR="$bindir" ADB="$ADB" TABLET_SERIAL="$SERIAL" CLAYCLAUDE_TABLET_LOCK_HELD=1 "$@" {lockfd}>&- || rc=$?
     else
-      PATH="$bindir:$PATH" ADB="$ADB" TABLET_SERIAL="$SERIAL" CLAYCLAUDE_TABLET_LOCK_HELD=1 "$@" || rc=$?
+      PATH="$bindir:$PATH" CLAYCLAUDE_TABLET_BINDIR="$bindir" ADB="$ADB" TABLET_SERIAL="$SERIAL" CLAYCLAUDE_TABLET_LOCK_HELD=1 "$@" || rc=$?
     fi
     rm -f "$bindir/adb"; rmdir "$bindir"
     exit "$rc"
