@@ -1,0 +1,25 @@
+[Unit]
+# The real daemon, supervised. tools/live-daemon.sh installs this as a systemd user unit and starts it; it used to
+# start the daemon with setsid + nohup, which outlives the caller but not a WSL restart, and nothing started it again
+# (2026-10-18: the tablet sat on "down" for hours after WSL came back). Restart=always also covers a crash.
+Description=clayclaude daemon (the tablet board)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Written by tools/live-daemon.sh: CLAYCLAUDE_WT (the built worktree to serve) and CLAYCLAUDE_NODE (its node binary;
+# a systemd user unit gets no nvm PATH).
+EnvironmentFile=%h/.config/clayclaude/daemon.env
+# The same guard live-daemon.sh runs: never poll oauth usage with refresh on.
+ExecStartPre=/bin/sh -c 'exec "$CLAYCLAUDE_NODE" "$CLAYCLAUDE_WT/tools/refresh-guard.mjs" "$HOME/.config/clayclaude/config.yaml"'
+ExecStart=/bin/sh -c 'cd "$CLAYCLAUDE_WT" && exec "$CLAYCLAUDE_NODE" dist/cli.js serve'
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=0
+# Not /tmp: a WSL restart empties it, and with it the log of what happened before.
+StandardOutput=append:%h/.local/state/clayclaude/serve.log
+StandardError=append:%h/.local/state/clayclaude/serve.log
+
+[Install]
+WantedBy=default.target
