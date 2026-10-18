@@ -5,6 +5,8 @@
 Description=clayclaude daemon (the tablet board)
 After=network-online.target
 Wants=network-online.target
+# Never give up restarting. A [Unit] key: under [Service] systemd ignores it.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -19,7 +21,6 @@ ExecStartPre=/bin/sh -c 'exec "$CLAYCLAUDE_NODE" "$CLAYCLAUDE_WT/tools/refresh-g
 ExecStart=/bin/sh -c 'cd "$CLAYCLAUDE_WT" && exec "$CLAYCLAUDE_NODE" dist/cli.js serve'
 Restart=always
 RestartSec=5
-StartLimitIntervalSec=0
 # Not /tmp: a WSL restart empties it, and with it the log of what happened before.
 StandardOutput=append:%h/.local/state/clayclaude/serve.log
 StandardError=append:%h/.local/state/clayclaude/serve.log
