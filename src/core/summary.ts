@@ -1,5 +1,5 @@
 import { count, summariseInput } from './transcript.js';
-import type { SessionSummary, ToolEvent } from '../actions/types.js';
+import type { LastMessage, SessionSummary, ToolEvent } from '../actions/types.js';
 
 const FILE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 const MAX_TOOLS = 40;
@@ -58,4 +58,33 @@ export function buildSummary(lines: string[], startedAt?: number): SessionSummar
   s.tools = tools.slice(-MAX_TOOLS);
   s.files = [...new Set(files.reverse())].slice(0, MAX_FILES);
   return s;
+}
+
+/** GET /api/message's cap on the text it returns (64 KB). */
+export const MAX_MESSAGE_CHARS = 65_536;
+
+/**
+ * The full text of the newest assistant reply that has any text, from the probe's transcript lines (fetched with a
+ * `textClip` above the cap, so the text is not clipped at 400 characters). One reply is written as one line per content
+ * block, each with the same message.id, so all its text blocks are joined with blank lines. A tool-only turn after it is
+ * skipped, and so is a sub-agent's (sidechain) turn. `at` is the timestamp of its last text block. Null when no reply has
+ * text. Pure.
+ */
+export function lastAssistantMessage(lines: string[], cap = MAX_MESSAGE_CHARS): LastMessage | null {
+  let id: unknown, texts: string[] = [], at: number | null = null;
+  for (const line of lines) {
+    let e: any;
+    try { e = JSON.parse(line); } catch { continue; }
+    if (e?.type !== 'assistant' || e.isSidechain === true) continue;
+    const blocks = (Array.isArray(e.message?.content) ? e.message.content : [])
+      .filter((b: any) => b?.type === 'text' && typeof b.text === 'string' && b.text.trim()).map((b: any) => b.text.trim());
+    if (!blocks.length) continue;
+    const mid = e.message?.id ?? e.requestId ?? Symbol();
+    if (mid !== id) { id = mid; texts = []; }
+    texts.push(...blocks);
+    at = typeof e.timestamp === 'string' && Number.isFinite(Date.parse(e.timestamp)) ? Date.parse(e.timestamp) : null;
+  }
+  if (!texts.length) return null;
+  const full = texts.join('\n\n');
+  return full.length > cap ? { text: full.slice(0, cap), at, chars: full.length, truncated: true } : { text: full, at, chars: full.length };
 }

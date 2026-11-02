@@ -79,6 +79,14 @@ describe('launch', () => {
     expect(execFileSync('tmux', ['list-windows', '-t', `=${tmux}`], { encoding: 'utf8' }).trim().split('\n')).toHaveLength(2);
   });
 
+  // The voice layer's first prompt reaches claude through the real launch script as one argument after `--`.
+  it('passes a first prompt as one argument after `--`, untouched by the shell', async () => {
+    const { dir, repo, deps } = setup();
+    expect(await launch(deps, { account: 'me', repo, options: { prompt: "-p why is this bug happening; $(id) `id` 'q' \"q\" $HOME" } })).toMatchObject({ ok: true });
+    expect(await waitFor(join(dir, 'cwd'))).toBe(true);
+    expect(readFileSync(join(dir, 'args'), 'utf8').trim().split('\n')).toEqual(['-n', 'my-repo', '--', "-p why is this bug happening; $(id) `id` 'q' \"q\" $HOME"]);
+  });
+
   it('reports the started pane (target, the pid tmux gives for it, folder) so the board can show it until Claude registers (Task 40)', async () => {
     const { repo, tmux, deps } = setup();
     const started: any[] = [];

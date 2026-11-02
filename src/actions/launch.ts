@@ -3,6 +3,8 @@ import { errorLine, firstLine, type HostExec } from './exec.js';
 import { fail, type LaunchAccountOptions, type LaunchOptions, type LaunchRequest, type RepoEntry, type Result } from './types.js';
 import { ActionError, parseTmuxRef, safeName, type TmuxRef } from './validate.js';
 import { cleanNickname } from '../nicknames.js';
+import { repoAbout, type AboutInputs } from '../core/about.js';
+import type { RepoSummaries } from './about-summary.js';
 import { BUILTIN_MODELS, MODEL_ALIASES, groupModels, type ModelCache, type ModelInfo } from './models.js';
 
 export type ProbeFn = (host: HostConfig, req: object) => Promise<unknown>;
@@ -67,22 +69,34 @@ export class CapsCache {
 
 /* ---------- repositories ---------- */
 
+type RepoRow = { entry: RepoEntry; inputs: AboutInputs };
+
 export class RepoLister {
-  private cache = new Map<string, { at: number; repos: RepoEntry[] }>();
-  constructor(private cfg: Config, private probe: ProbeFn, private now: () => number = Date.now, private ttlMs = 30_000) {}
+  private cache = new Map<string, { at: number; rows: RepoRow[] }>();
+  /** `summaries`: the optional model-written lines (`repoSummaries.enabled`); the heuristic line stands in until one is ready. */
+  constructor(private cfg: Config, private probe: ProbeFn, private now: () => number = Date.now, private ttlMs = 30_000, private summaries?: RepoSummaries) {}
 
   async list(hostId: string, force = false): Promise<RepoEntry[]> {
-    const hit = this.cache.get(hostId);
-    if (hit && !force && this.now() - hit.at < this.ttlMs) return hit.repos;
-    const host = this.cfg.hosts.find((h) => h.id === hostId);
-    if (!host) return [];
-    const r = (await this.probe(host, {
-      mode: 'repos', roots: host.repoRoots,
-      configDirs: this.cfg.accounts.filter((a) => a.host === hostId).map((a) => a.configDir),
-    })) as { ok: boolean; repos: RepoEntry[] };
-    const repos = r.ok ? r.repos : [];
-    this.cache.set(hostId, { at: this.now(), repos });
-    return repos;
+    let hit = this.cache.get(hostId);
+    if (!hit || force || this.now() - hit.at >= this.ttlMs) {
+      const host = this.cfg.hosts.find((h) => h.id === hostId);
+      if (!host) return [];
+      const r = (await this.probe(host, {
+        mode: 'repos', roots: host.repoRoots, readme: true,
+        configDirs: this.cfg.accounts.filter((a) => a.host === hostId).map((a) => a.configDir),
+      })) as { ok: boolean; repos: (RepoEntry & { readme?: string; manifest?: string })[] };
+      // The probe sends each README's head and manifest description; only one line of them leaves the daemon.
+      const rows = r.ok ? r.repos.map(({ readme, manifest, ...entry }): RepoRow => ({ entry, inputs: { readme, manifest } })) : [];
+      hit = { at: this.now(), rows };
+      this.cache.set(hostId, hit);
+    }
+    // The summary is read at answer time, so one that finishes between two lists shows in the next without a new probe.
+    return hit.rows.map(({ entry, inputs }) => {
+      const key = `${hostId}:${entry.path}`;
+      this.summaries?.request(key, inputs);
+      const about = this.summaries?.peek(key, inputs) ?? repoAbout(inputs);
+      return about ? { ...entry, about } : entry;
+    });
   }
 }
 
@@ -122,7 +136,12 @@ export const LAUNCH_SCRIPT = [
 ].join('\n');
 
 /** `name`: this claude takes `-n/--name`. `sessionName`: the name asked for in + New (Task 42a), cleaned. */
-export interface ValidOptions { model?: string; effort?: string; permissionMode?: string; remoteControl: boolean; openOnPc: boolean; name: boolean; sessionName?: string }
+export interface ValidOptions { model?: string; effort?: string; permissionMode?: string; remoteControl: boolean; openOnPc: boolean; name: boolean; sessionName?: string; prompt?: string }
+
+/** The longest first prompt a launch takes (the voice layer's cap for a message too). */
+export const MAX_LAUNCH_PROMPT = 4000;
+// Any control character but a tab or a newline.
+const PROMPT_CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f]/;
 
 /** The models allowed without a discovered list: the built-in list, the config's extras and the aliases. */
 const staticAllowed = (cfg: Config) => new Set<string>([...BUILTIN_MODELS.map((m) => m.id), ...cfg.launch.models, ...MODEL_ALIASES]);
@@ -157,8 +176,17 @@ export function validateOptions(cfg: Config, caps: CliCaps, o: LaunchRequest['op
     if (!c.ok) throw new ActionError('bad_request', c.message);
     sessionName = c.name;
   }
+  // The voice layer's first prompt: one argv element (never shell text), so nothing to escape; only control characters
+  // other than newlines and tabs are refused. A blank one is no prompt.
+  let prompt: string | undefined;
+  if (o.prompt !== undefined && o.prompt.trim()) {
+    if (o.prompt.length > MAX_LAUNCH_PROMPT) throw new ActionError('too_long', `the prompt is over ${MAX_LAUNCH_PROMPT} characters`);
+    if (PROMPT_CONTROL.test(o.prompt)) throw new ActionError('bad_request', 'the prompt has a control character (only newlines and tabs are allowed)');
+    prompt = o.prompt;
+  }
   // -n is passed only when this claude lists it: an unknown flag would end the session at once.
-  return { model: o.model, effort: o.effort, permissionMode, remoteControl: !!o.remoteControl, openOnPc: !!o.openOnPc, name: caps.name, sessionName };
+  return { model: o.model, effort: o.effort, permissionMode, remoteControl: !!o.remoteControl, openOnPc: !!o.openOnPc, name: caps.name, sessionName,
+    ...(prompt !== undefined ? { prompt } : {}) };
 }
 
 export function launchArgv(p: { host: HostConfig; account: AccountConfig; repoPath: string; options: ValidOptions; windowName: string }): string[] {
@@ -169,6 +197,8 @@ export function launchArgv(p: { host: HostConfig; account: AccountConfig; repoPa
     ...(p.options.remoteControl ? ['--remote-control'] : []),
     // A name from + New is one `--name=…` argument, so a name that starts with `-` can never be read as another option.
     ...(p.options.name ? (p.options.sessionName !== undefined ? [`--name=${p.options.sessionName}`] : ['-n', p.windowName]) : []),
+    // The first prompt is the positional argument, after `--` ends the options: a prompt starting with `-` is never a flag.
+    ...(p.options.prompt !== undefined ? ['--', p.options.prompt] : []),
   ];
   return ['bash', '-lc', LAUNCH_SCRIPT, 'clayclaude-launch', p.host.tmuxSession, p.repoPath, p.windowName, p.account.configDir, p.host.claudeBin, ...claudeArgs];
 }

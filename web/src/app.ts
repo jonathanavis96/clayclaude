@@ -13,7 +13,8 @@ import { initBoardTaps } from './taps.js';
 import { openLauncher } from './launcher.js';
 import { nightLevel } from './night.js';
 import { getJson, postAction } from './net.js';
-import { toast } from './overlay.js';
+import { closeAllOverlays, overlayCount, toast } from './overlay.js';
+import { RemoteFocus } from './remote-focus.js';
 import { effective, type AppPrefs, type ConfigDefaults } from './prefs.js';
 import { openSettings } from './settings.js';
 import { initRenameGestures, openRenameSheet } from './rename.js';
@@ -62,13 +63,29 @@ export function initApp(ctx: AppCtx) {
   /** The rename sheet for a session (Task 41), from the board, its focus view or the account popup (Task 42a). */
   const rename = (key: string) => { const s = session(key); return s ? openRenameSheet(s) : undefined; };
 
-  const focus = (key: string) => openFocus({
+  /** The session whose focus view is open, if one is. */
+  let focused: string | null = null;
+  const focus = (key: string) => { focused = key; return openFocus({
     sessionKey: key, getState: ctx.getState, clay: ctx.clay, ttlMinutes: () => ctx.getState()?.cacheTtlMinutes ?? 60,
+    onClose: () => { if (focused === key) focused = null; },
     onAction: (a, s) => (a === 'answer' ? answer(s) : a === 'message' ? message(s) : void act(a, s)),
     // Closing an overlay steps the browser history back asynchronously; open the next one after that settles.
     onSwitch: (k) => setTimeout(() => focus(k), 120),
     rename,
-  });
+  }); };
+
+  // The voice layer asks the daemon to show a session (remote-focus.ts). Its focus view replaces whatever is open; the
+  // same view already open, alone, is left as it is.
+  const remote = new RemoteFocus();
+  const shown = (k: string) => !!session(k);
+  const showRemote = (key: string | null) => {
+    if (!key) return;
+    if (focused === key && overlayCount() === 1) return;
+    if (!overlayCount()) { focus(key); return; }
+    closeAllOverlays();
+    // Closing steps the browser history back asynchronously; open the view after that settles (as onSwitch does).
+    setTimeout(() => focus(key), 120);
+  };
 
   // Counts filter the board, a meter opens its account, and the clock or blank space clears the filter on a tap and
   // toggles full screen on a double tap (spec §5.1, UI round 4).
@@ -136,7 +153,10 @@ export function initApp(ctx: AppCtx) {
       const list = withoutBackground(s.sessions, ctx.getPrefs().showBackground);
       if (seen && ctx.getPrefs().sound && newlyNeedsYou(seen, list).length) chime();
       seen = needsYouKeys(list);
+      showRemote(remote.onState(shown, Date.now()));
     },
+    /** A `{ type: 'focus' }` message from the daemon. */
+    onFocus(key: string) { showRemote(remote.request(key, shown, Date.now())); },
     /** The sessions the board should draw (the stopped-retention and background preferences applied). */
     visible: (list: Session[]) => visibleSessions(list, eff().stoppedRetentionMs, Date.now(), ctx.getPrefs().showBackground),
     prefsChanged: dim,

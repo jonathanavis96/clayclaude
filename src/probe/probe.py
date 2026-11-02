@@ -157,12 +157,20 @@ def headless_argv(pid):
     return False
 
 
-def open_regular(path):
+def open_regular(path, nofollow=False):
     """Open `path` for reading only if it is a regular file, else raise OSError.
 
     O_NONBLOCK: opening a FIFO would otherwise wait for a writer, and the probe would hang until the
-    daemon kills it, every poll. A symlink to /dev/zero or /dev/urandom would never end. Neither is ours to read."""
-    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+    daemon kills it, every poll. A symlink to /dev/zero or /dev/urandom would never end. Neither is ours to read.
+    `nofollow`: a symlink as the last component is refused (O_NOFOLLOW raises ELOOP)."""
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0)
+    if nofollow:
+        if not hasattr(os, "O_NOFOLLOW"):
+            if os.path.islink(path):
+                raise OSError(f"symlink refused: {path}")
+        else:
+            flags |= os.O_NOFOLLOW
+    fd = os.open(path, flags)
     try:
         st = os.fstat(fd)
         if not stat.S_ISREG(st.st_mode):
@@ -216,7 +224,8 @@ def clip_obj(o, n, depth=0):
     return o
 
 
-def trim_line(line, clip):
+def trim_line(line, clip, text_clip=None):
+    """`text_clip` (GET /api/message): an assistant's text blocks keep up to that many characters instead of `clip`."""
     try:
         d = loads(line)
     except ValueError:
@@ -234,6 +243,7 @@ def trim_line(line, clip):
     if isinstance(d.get("content"), str):
         d["content"] = d["content"][:clip]
     msg = d.get("message")
+    keep = {}
     if isinstance(msg, dict) and isinstance(msg.get("content"), str):
         msg["content"] = msg["content"][:clip]
     if isinstance(msg, dict) and isinstance(msg.get("content"), list):
@@ -242,6 +252,8 @@ def trim_line(line, clip):
             if not isinstance(b, dict):
                 continue
             bt = b.get("type")
+            if bt == "text" and text_clip and t == "assistant" and isinstance(b.get("text"), str):
+                keep[len(out)] = b["text"][:text_clip]  # put back after the backstop below
             if bt in ("text", "thinking"):
                 b[bt] = clip_str(b.get(bt), clip)
                 b.pop("signature", None)
@@ -258,6 +270,8 @@ def trim_line(line, clip):
             out.append(b)
         msg["content"] = out
     d = clip_obj(d, clip)  # backstop: no field the rules above miss can ship at full size
+    for i, text in keep.items():
+        d["message"]["content"][i]["text"] = text
     return json.dumps(d, separators=(",", ":"))
 
 
@@ -381,6 +395,8 @@ def snapshot(req):
     tail_bytes = int(req.get("tailBytes", 262144))
     max_lines = int(req.get("maxLines", 60))
     clip = int(req.get("clip", 2000))
+    text_clip = req.get("textClip")
+    text_clip = text_clip if isinstance(text_clip, int) and text_clip > clip else None
     # Transcript text one snapshot may carry, and the time it may spend reading. Past either, the rest are
     # marked `deferred` (no tsig, so the caller asks again) and arrive on later polls as the caller's
     # `known` fills: a crowd of sessions slows the first polls down instead of timing every poll out.
@@ -444,7 +460,7 @@ def snapshot(req):
                 reg["deferred"] = True
                 continue
             # strict: a tail we could not read must not go out under a signature the daemon would cache as current.
-            kept = [x for x in (trim_line(ln, clip) for ln in tail_lines(tp, tail_bytes, strict=True)) if x]
+            kept = [x for x in (trim_line(ln, clip, text_clip) for ln in tail_lines(tp, tail_bytes, strict=True)) if x]
             reg.update(tsig=sig, transcript=kept[-max_lines:])
             spent += sum(len(x) for x in reg["transcript"])
         except Exception:
@@ -1134,6 +1150,117 @@ def _walk_repos(root, depth, out, limit):
             _walk_repos(e.path, depth - 1, out, limit)
 
 
+README_NAMES = ("README.md", "readme.md", "README.markdown", "README.rst", "README.txt", "README")
+README_HEAD = 2048
+
+
+# A README head that looks like it holds a secret is never sent (its first sentence goes into a model's prompt).
+SECRET_HEAD = re.compile(
+    r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----|^\s*(?:export\s+)?[A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD)[A-Za-z0-9_]*\s*=",
+    re.M | re.I)
+
+
+def _read_inside(repo, name, limit):
+    """Up to `limit` bytes of the regular file `name` directly inside `repo`, or None.
+
+    Only a regular file inside the repo itself: a file that is a symlink (O_NOFOLLOW), or whose real path leaves the
+    repo through a symlinked directory, is skipped, so a README pointing at ~/.ssh/id_rsa or a .env is never read."""
+    try:
+        root = os.path.realpath(repo)
+        path = os.path.join(repo, name)
+        real = os.path.realpath(path)
+        if os.path.commonpath([root, real]) != root or os.path.dirname(real) != root:
+            return None
+        f, _ = open_regular(path, nofollow=True)
+    except (OSError, ValueError):
+        return None
+    with f:
+        return f.read(limit).decode("utf-8", "replace")
+
+
+def readme_head(repo):
+    """The first 2 KB of a repo's README (the caller reduces it to the repo's description), or None.
+
+    Read the safe way (_read_inside). A head that looks like a secret (a private-key header, a KEY=/TOKEN=/PASSWORD=
+    line) is skipped too."""
+    for n in README_NAMES:
+        head = _read_inside(repo, n, README_HEAD)
+        if head is None:
+            continue
+        if SECRET_HEAD.search(head):
+            return None
+        return head
+    return None
+
+
+MANIFESTS = ("package.json", "pyproject.toml", "Cargo.toml")
+MANIFEST_READ = 65536   # a manifest's description is near its top; a bigger file is read as far as this
+MANIFEST_ABOUT = 400    # the longest description sent on
+# The TOML tables a project description lives in: PEP 621, Cargo, Poetry.
+TOML_TABLES = ("project", "package", "tool.poetry")
+_TOML_DESC = re.compile(r'^description\s*=\s*(?:"((?:[^"\\]|\\.)*)"|\'([^\']*)\')\s*(?:#.*)?$')
+_JSON_DESC = re.compile(r'"description"\s*:\s*("(?:[^"\\]|\\.)*")')
+
+
+def _toml_description(text):
+    """`description = "..."` (one line) in the first of TOML_TABLES that has one; None otherwise. Not a TOML parser:
+    tomllib needs Python 3.11 and the probe runs on 3.8."""
+    found = {}
+    table = None
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("["):
+            table = line.strip("[] \t").strip()
+            continue
+        if table in TOML_TABLES and table not in found:
+            m = _TOML_DESC.match(line)
+            if m:
+                if m.group(1) is not None:
+                    try:
+                        found[table] = json.loads('"' + m.group(1) + '"')
+                    except ValueError:
+                        found[table] = m.group(1)
+                else:
+                    found[table] = m.group(2)
+    for t in TOML_TABLES:
+        if found.get(t):
+            return found[t]
+    return None
+
+
+def _json_description(text):
+    try:
+        d = loads(text)
+        v = d.get("description") if isinstance(d, dict) else None
+        return v if isinstance(v, str) else None
+    except ValueError:
+        pass
+    # Cut off at the read limit: the first "description" in what is left (it sits near the top of a package.json).
+    m = _JSON_DESC.search(text)
+    try:
+        return json.loads(m.group(1)) if m else None
+    except ValueError:
+        return None
+
+
+def manifest_description(repo):
+    """The `description` of the repo's package.json, pyproject.toml or Cargo.toml (first that has one), or None.
+
+    Read the safe way (_read_inside) and capped at 400 characters, whitespace collapsed. A description that looks
+    like a secret is dropped."""
+    for n in MANIFESTS:
+        text = _read_inside(repo, n, MANIFEST_READ)
+        if text is None:
+            continue
+        d = _json_description(text) if n.endswith(".json") else _toml_description(text)
+        if not isinstance(d, str):
+            continue
+        d = re.sub(r"[\x00-\x1f\x7f\s]+", " ", d).strip()[:MANIFEST_ABOUT]
+        if d and not SECRET_HEAD.search(d):
+            return d
+    return None
+
+
 def repos(req):
     """Git repositories under the given roots, with the time a Claude session last used each."""
     limit = int(req.get("limit", 400))
@@ -1153,7 +1280,15 @@ def repos(req):
                 used = max(used, int(os.path.getmtime(os.path.join(d, "projects", slug(p))) * 1000))
             except OSError:
                 pass
-        found.append({"path": p, "name": os.path.basename(p), "lastUsedMs": used})
+        entry = {"path": p, "name": os.path.basename(p), "lastUsedMs": used}
+        if req.get("readme"):
+            head = readme_head(p)
+            if head:
+                entry["readme"] = head
+            desc = manifest_description(p)
+            if desc:
+                entry["manifest"] = desc
+        found.append(entry)
     found.sort(key=lambda r: (-r["lastUsedMs"], r["name"]))
     return {"ok": True, "roots": roots_out, "repos": found}
 

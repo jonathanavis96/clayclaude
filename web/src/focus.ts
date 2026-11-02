@@ -18,6 +18,8 @@ export interface FocusCtx {
   onSwitch(key: string): void;
   /** Task 42a: a long-press or right-click on the title opens the rename sheet for this session (as on the board). */
   rename?(key: string): (() => void) | void;
+  /** Called once when the view closes, however it closes. */
+  onClose?(): void;
 }
 
 /** Opens only when a row is tapped. Tap outside, the ×, or Android Back closes it. */
@@ -36,7 +38,7 @@ export function openFocus(ctx: FocusCtx): () => void {
   let closed = false;
   let stopRename: (() => void) | undefined;
   const label = (s: Session) => ctx.getState()?.accounts.find((a) => a.id === s.account)?.label ?? s.account;
-  const close = pushOverlay(el, () => { closed = true; clearInterval(timer); clearInterval(poll); stopLarge?.(); stopMinis.forEach((f) => f()); stopRename?.(); });
+  const close = pushOverlay(el, () => { closed = true; clearInterval(timer); clearInterval(poll); stopLarge?.(); stopMinis.forEach((f) => f()); stopRename?.(); ctx.onClose?.(); });
   el.innerHTML = shellHtml(focusModel(first, null, Date.now(), label(first)));
   stopLarge = ctx.clay.mountLarge(el.querySelector<HTMLElement>('#f-char')!, first);
 

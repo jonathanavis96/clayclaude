@@ -8,6 +8,37 @@ All notable changes to clayclaude are listed here. The format follows
 
 ### Added
 
+- **Better one-line repo descriptions, and an optional model-written one.**
+  `GET /api/repos` `about` is now read, first hit wins, from the `description`
+  in `package.json`, `pyproject.toml` (`[project]` or `[tool.poetry]`) or
+  `Cargo.toml`; else the README's tagline (the bold line of a centred header
+  block, or the first plain paragraph after the title, skipping badges, images,
+  link rows, headings and HTML, and preferring a paragraph that does not open
+  with "Because", "And", "But" or "So"); else the first sentence as before. The
+  line is cut to 140 characters at a word boundary (it was 160, mid-word). The
+  probe reads the manifests the same way as the README: no symlinks, inside the
+  repo, 64 KB at most, a secret-looking description dropped. New config
+  `repoSummaries: { enabled, model, bin }` (off by default, because it costs
+  money) has `claude -p --model claude-haiku-5-5 --effort low --tools ""` write
+  the line from the README head and the manifest description, cached in
+  `state.json` by a hash of the inputs and never blocking `/api/repos`.
+
+- **Voice layer: what each session was last asked, and what each repo is.**
+  Every session in `/ws` state and `GET /api/state` carries `lastPrompts`: the
+  last three prompts typed into it (oldest first, one line of at most 160
+  characters each; tool results, reminders, hook output, slash commands and
+  pasted logs are left out). The daemon remembers prompts that scroll out of
+  the transcript tail while the session is listed. `GET /api/repos` entries
+  carry `about`, the first sentence of the repo's README. About 300 bytes per
+  session on the measured board.
+
+- **Voice layer: show a session on the tablet.** `POST /api/action
+  {"action":"focus","sessionId":...}` (same header and origin rules as every
+  action) asks each connected board to open that session's focus view, over
+  the `/ws` connection as `{ "type": "focus", "sessionId": ... }`. A session
+  the board does not list yet is opened when it appears, for up to a minute.
+  It sends nothing to any session. The demo answers `unsupported`.
+
 - **The tablet dims and sleeps when you stop typing.** With no prompt typed to
   Claude in any session for 30 minutes the tablet dims to 10% brightness, and
   after 70 minutes its screen goes off; the next prompt you type turns it back

@@ -69,6 +69,7 @@ function connect() {
   ws.onopen = () => void checkBuild();
   ws.onmessage = (m) => {
     const msg = JSON.parse(m.data);
+    if (msg.type === 'focus' && typeof msg.sessionId === 'string') { app.onFocus(msg.sessionId); return; }
     if (msg.type === 'state') { const next: BoardState = { ...msg, clockSkew: msg.serverTime - Date.now() }; state = next; showLink(banner, 'live'); app.onState(next); draw(); syncClay(); }
   };
   ws.onclose = () => { showLink(banner, state ? 'down' : 'connecting'); setTimeout(connect, 3000); };

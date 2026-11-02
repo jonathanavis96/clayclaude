@@ -10,6 +10,7 @@ import { DismissedStore } from './dismissed.js';
 import { NicknameStore, adoptLaunchName } from './nicknames.js';
 import { UsagePoller } from './usage.js';
 import { startServer } from './server.js';
+import { FocusBus } from './focus-bus.js';
 import { AdbReverse } from './adb.js';
 import { daemonAdb } from './adbpick.js';
 import { KioskLauncher, createKioskRoute, kioskWants } from './kiosk.js';
@@ -74,11 +75,13 @@ if (!existsSync(join(webRoot, 'index.html'))) console.warn(`clayclaude: no board
 const startFailed = (e: any) => fail(e?.code === 'EADDRINUSE' ? `port ${cfg.port} is already in use (is clayclaude already running?)`
   : e?.code === 'EACCES' ? `no permission to listen on port ${cfg.port}`
   : `cannot start the server on port ${cfg.port}: ${e instanceof Error ? e.message : String(e)}`);
+const focus = new FocusBus();
 const actions = createActionService({
   cfg, sessions: () => collector.sessions(), probe: (h, r) => runProbe(h, r, { timeoutMs: 15_000 }),
   clear: { store: dismissed, files: (k) => collector.registryFiles(k), changed: () => collector.refilter() }, names,
   pending: { store: pending, changed: () => collector.refilter() },
   statePath: join(dirname(configPath), 'state.json'),   // each account's model list for + New (Task 46)
+  focus,   // the voice layer's "show it on the tablet"
 });
 const clayRoutes = createClayRoutes({ webRoot });   // spec §7.3 "Baked by PC": /clay/status and /clay/sheet
 let kiosk: KioskLauncher | undefined;   // set once the server knows its port
@@ -88,7 +91,7 @@ const { dimAfterMinutes, dimPercent, sleepAfterMinutes } = cfg.tablet;
 const sleeper = new TabletSleep({ adbBin: cfg.tablet.adb, serial: () => tablet, sessions: () => collector.sessions(),
   defaults: { dimAfterMinutes, dimPercent, sleepAfterMinutes }, statePath: join(dirname(configPath), 'state.json') });
 const handlers = [createKioskRoute(() => kiosk), createScreenRoute(() => sleeper), createActionRoutes(actions, { mode: 'live', publicConfig: () => actions.publicConfig() }), clayRoutes.handler];
-const srv = await startServer({ cfg, collector, usage, webRoot, handlers, names }).catch(startFailed);
+const srv = await startServer({ cfg, collector, usage, webRoot, handlers, names, focus }).catch(startFailed);
 kiosk = cfg.tablet.kiosk ? new KioskLauncher({ adbBin: cfg.tablet.adb, port: srv.port, chromePackage: cfg.tablet.chromePackage }) : undefined;
 const adbCheck = daemonAdb(cfg.tablet.adb);   // one adb server only: the daemon runs its configured adb and never another
 const adb = new AdbReverse(cfg.tablet.adb, srv.port, {

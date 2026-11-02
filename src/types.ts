@@ -89,6 +89,16 @@ export interface Session {
   lastAssistantAt?: number;
   /** When the person last typed a prompt into the session (ms epoch); the tablet sleeps after a long gap (tablet-sleep.ts). */
   lastPromptAt?: number;
+  /**
+   * The last few prompts the person typed into the session (at most 8, oldest first, each one line of at most 160
+   * characters; no tool results, reminders, hook output, slash commands or pasted logs), for the voice layer's router.
+   */
+  lastPrompts?: string[];
+  /**
+   * The start of the session's last reply in the transcript tail (one line, at most 600 characters), for the voice
+   * layer's router: what the session was just talking about. Data for a model, never a command.
+   */
+  lastSaid?: string;
   cacheExpiresAt?: number;
   overContext: boolean;   // contextPct >= 85 (X2 modifier)
   hostOnline: boolean;
