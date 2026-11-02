@@ -56,6 +56,8 @@ export interface LaunchRequest {
     model?: string; effort?: string; remoteControl?: boolean; openOnPc?: boolean; name?: string;
     /** Task 46: `--permission-mode`. bypassPermissions also needs `confirmBypass` (the tablet's confirm step) and the config's allowBypassPermissions. */
     permissionMode?: string; confirmBypass?: boolean;
+    /** The session's first prompt (voice layer): the last argv element, after `--`. At most 4000 characters, no control characters but newlines and tabs. */
+    prompt?: string;
   };
 }
 
@@ -76,7 +78,11 @@ export interface LaunchAccountOptions {
 }
 export interface LaunchOptions { accounts: LaunchAccountOptions[] }
 
-export interface RepoEntry { path: string; name: string; lastUsedMs: number }
+export interface RepoEntry {
+  path: string; name: string; lastUsedMs: number;
+  /** The first sentence of the repo's README (prompts.ts, readmeAbout), for the voice layer's router. */
+  about?: string;
+}
 
 export interface ToolEvent { at: number | null; name: string; target: string }
 export interface SessionSummary {
@@ -91,6 +97,8 @@ export interface SessionSummary {
   startedAt?: number;
 }
 
+export interface LastMessage { text: string; at: number | null; chars: number; truncated?: true }
+
 export interface ActionApi {
   open(sessionId: string): Promise<Result<{ message: string }>>;
   attach(sessionId: string): Promise<Result<{ message: string }>>;
@@ -102,6 +110,11 @@ export interface ActionApi {
   launchOptions(): Promise<LaunchOptions>;
   repos(accountId: string): Promise<Result<{ repos: RepoEntry[] }>>;
   summary(sessionId: string): Promise<Result<{ summary: SessionSummary }>>;
+  /**
+   * The full text of the session's last assistant message (GET /api/message, for the voice layer): no 800-character clip,
+   * capped at 64 KB. `at` is its timestamp (ms epoch), `chars` its length before the cap.
+   */
+  lastMessage(sessionId: string): Promise<Result<LastMessage>>;
   /** Hide a stopped session for good and remove its dead registry files where safe (spec §5.1). `removed`: files removed. */
   clear(sessionId: string): Promise<Result<{ message: string; removed: number }>>;
   /** `clear` for every stopped session. */
@@ -114,6 +127,11 @@ export interface ActionApi {
    * into the session, only under the idle gate (message.ts, renameInClaude); when that is refused nothing is renamed.
    */
   rename(sessionId: string, name: string | null, o?: { tmux?: boolean; claude?: boolean }): Promise<Result<{ message: string; name: string; tmuxError?: string }>>;
+  /**
+   * The voice layer: asks every connected board to open this session's focus view (FocusBus). Changes nothing on any
+   * host. Optional: without it (the demo, older fakes) the route answers `unsupported`.
+   */
+  focus?(sessionId: string): Promise<Result<{ message: string }>>;
 }
 
 export const fail = (error: ErrorCode, message: string, prompt?: PromptView): Fail =>

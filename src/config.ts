@@ -122,6 +122,17 @@ export const ConfigSchema = z.object({
     .default({})
     .refine((l) => !l.enabled || !!l.token, { message: 'lan.enabled needs lan.token (run clayclaude setup)' })
     .refine((l) => !l.enabled || l.hosts.length > 0, { message: 'lan.enabled needs lan.hosts (the address the tablet or other devices use)' }),
+  /**
+   * One-line repo descriptions written by a model instead of read off the manifest and README. Off by default: every
+   * repo costs one small `claude -p` call (once, and again only when its README head or manifest description changes).
+   */
+  repoSummaries: z.object({
+    enabled: z.boolean().default(false),
+    /** The model id passed to `claude --model` (a small, cheap one). */
+    model: z.string().regex(/^[A-Za-z0-9][\w.\[\]-]{0,63}$/).default('claude-haiku-5-5'),
+    /** The claude binary on the machine the daemon runs on (a bare name is looked up in a login shell's PATH). */
+    bin: z.string().regex(/^[A-Za-z0-9_.\/~-]{1,200}$/).default('claude'),
+  }).default({}),
   ui: z.object({
     quickReplies: z.array(z.string().min(1).max(200)).max(12).default(['yes', 'no', 'continue']),
     confirmBeforeSend: z.boolean().default(false),

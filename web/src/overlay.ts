@@ -77,3 +77,6 @@ function closeTo(entry: Entry) {
 }
 
 export const overlayCount = () => stack.length;
+
+/** Closes every overlay (a focus request from the daemon replaces whatever is open). */
+export function closeAllOverlays(): void { while (stack.length) closeTop(false); }

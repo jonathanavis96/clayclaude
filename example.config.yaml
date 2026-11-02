@@ -115,6 +115,16 @@ tablet:
 hotkey: "#+t"
 # hotkeyScript: "/mnt/c/Users/you/clayclaude/clayclaude-hotkey.ahk"   # where setup wrote the script
 
+# The one-line description shown for each repo (GET /api/repos `about`, the launcher's repo list). By default it is read
+# off the repo: the description in package.json, pyproject.toml or Cargo.toml, else the README's tagline. Turn this on to
+# have a small model write the line from those two instead. It costs money (one `claude -p` call per repo, about $0.0002
+# each at the default model, made once and again only when the README head or the manifest description changes), so it is off.
+# Until a line is ready the list carries the one read off the repo; asking never delays the list.
+repoSummaries:
+  enabled: false
+  model: claude-haiku-5-5   # passed to `claude --model`; the call runs at low effort with no tools
+  bin: claude               # the claude binary on the machine the daemon runs on
+
 # The answer sheet (answering a session's question from the tablet).
 ui:
   quickReplies: ["yes", "no", "continue"]   # up to 12 buttons on a free-text question

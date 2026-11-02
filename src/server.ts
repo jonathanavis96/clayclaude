@@ -8,6 +8,7 @@ import type { UsagePoller } from './usage.js';
 import { APP_CSP, Guard } from './security.js';
 import { readServedStamp, UNKNOWN_STAMP } from './build-info.js';
 import type { NicknameStore } from './nicknames.js';
+import type { FocusBus } from './focus-bus.js';
 
 const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css',
   '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml', '.png': 'image/png' };
@@ -21,7 +22,7 @@ const MAX_BUFFERED = 8 * 1024 * 1024;
 /** Extra route. Return true once the request has been handled. */
 export type RouteHandler = (req: IncomingMessage, res: ServerResponse, url: URL) => boolean | Promise<boolean>;
 
-export async function startServer(o: { cfg: Config; collector: Collector; usage: UsagePoller; webRoot: string; port?: number; handlers?: RouteHandler[]; names?: NicknameStore }) {
+export async function startServer(o: { cfg: Config; collector: Collector; usage: UsagePoller; webRoot: string; port?: number; handlers?: RouteHandler[]; names?: NicknameStore; focus?: FocusBus }) {
   // Board nicknames (Task 41) are served as the session's name, its own name beside it as derivedName.
   const state = () => ({ type: 'state', sessions: o.names ? o.names.apply(o.collector.sessions()) : o.collector.sessions(), usage: o.usage.usage(),
     accounts: o.cfg.accounts.map((a) => ({ id: a.id, label: a.label, colour: a.colour, host: a.host })),
@@ -127,9 +128,15 @@ export async function startServer(o: { cfg: Config; collector: Collector; usage:
   o.collector.on('update', broadcast);
   o.usage.on('update', broadcast);
   o.names?.on('update', broadcast);
+  // A focus request goes out at once and only to the boards connected now (it is an event, not state).
+  const focus = (sessionId: string) => {
+    try { const msg = JSON.stringify({ type: 'focus', sessionId }); wss.clients.forEach((c) => push(c, msg)); }
+    catch (e) { console.warn(`clayclaude: focus broadcast failed: ${e instanceof Error ? e.message : String(e)}`); }
+  };
+  o.focus?.on('focus', focus);
   return {
     port: (http.address() as any).port as number,
-    close: () => new Promise<void>((r) => { clearInterval(heartbeat); clearTimeout(pending); o.collector.off('update', broadcast); o.usage.off('update', broadcast); o.names?.off('update', broadcast);
+    close: () => new Promise<void>((r) => { clearInterval(heartbeat); clearTimeout(pending); o.collector.off('update', broadcast); o.usage.off('update', broadcast); o.names?.off('update', broadcast); o.focus?.off('focus', focus);
       // A request still in flight (a slow handler) would hold http.close() open forever and hang shutdown.
       wss.clients.forEach((c) => c.terminate()); wss.close(); http.close(() => r()); http.closeAllConnections(); }),
   };

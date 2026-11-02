@@ -1,11 +1,13 @@
 import type { Config } from '../config.js';
 import type { ProbeSnapshot, RawRegistry, Session } from '../types.js';
 import type { DismissedStore } from '../dismissed.js';
+import type { FocusBus } from '../focus-bus.js';
 import { cleanNickname, renameIn, type NicknameStore } from '../nicknames.js';
-import { buildSummary } from '../core/summary.js';
+import { MAX_MESSAGE_CHARS, buildSummary, lastAssistantMessage } from '../core/summary.js';
 import { SendGuard, answer, readPrompt } from './answer.js';
 import { message, renameInClaude } from './message.js';
 import { makeExec, type HostExec } from './exec.js';
+import { RepoSummaries, claudeRunner } from './about-summary.js';
 import { CapsCache, RepoLister, launch, launchOptions, type ProbeFn } from './launch.js';
 import { ModelCache } from './models.js';
 import type { PendingLaunches } from './pending.js';
@@ -32,6 +34,10 @@ export interface ServiceDeps {
   names?: NicknameStore;
   /** state.json, where each account's model list is kept between restarts (Task 46). Memory only without it. */
   statePath?: string;
+  /** The voice layer's "show it on the tablet": focus requests go to the boards through this bus. */
+  focus?: FocusBus;
+  /** Model-written repo descriptions; built from `repoSummaries` in the config when not given (a test passes its own). */
+  repoSummaries?: RepoSummaries;
 }
 
 const toFail = (e: unknown): Fail =>
@@ -54,7 +60,9 @@ export function createActionService(d: ServiceDeps): ActionApi & { publicConfig(
   const env = d.env ?? detectPlatform();
   const now = d.now ?? Date.now;
   const caps = new CapsCache(d.probe, now);
-  const repos = new RepoLister(d.cfg, d.probe, now);
+  const rs = d.cfg.repoSummaries;
+  const aboutSummaries = d.repoSummaries ?? (rs.enabled ? new RepoSummaries({ run: claudeRunner(exec, { bin: rs.bin, model: rs.model }), model: rs.model, statePath: d.statePath ?? null }) : undefined);
+  const repos = new RepoLister(d.cfg, d.probe, now, undefined, aboutSummaries);
   const models = new ModelCache(d.cfg, d.probe, { now, statePath: d.statePath ?? null });
   const summaries = new Map<string, { at: number; value: SessionSummary }>();
   const guard = new SendGuard(now);   // one per daemon: a double tap must not type twice
@@ -167,6 +175,23 @@ export function createActionService(d: ServiceDeps): ActionApi & { publicConfig(
       } catch (e) { return toFail(e); }
     },
 
+    // The voice layer's "give me the full message": the summary's snapshot, but an assistant's text is not clipped at
+    // 400 characters (textClip; every other string still is), and not cached.
+    async lastMessage(id) {
+      const s = find(id);
+      if (isFail(s)) return s;
+      const account = d.cfg.accounts.find((a) => a.id === s.account);
+      const host = d.cfg.hosts.find((h) => h.id === s.host);
+      if (!account || !host) return fail('unknown_account', 'unknown account');
+      if (!s.hostOnline) return fail('host_offline', `${host.id} is offline`);
+      try {
+        const snap = (await d.probe(host, { mode: 'snapshot', dirs: [account.configDir], only: s.sessionId, tailBytes: 1_048_576, maxLines: 400, clip: 400,
+          textClip: MAX_MESSAGE_CHARS + 1 })) as ProbeSnapshot;
+        const m = lastAssistantMessage(registryOf(snap.dirs[0]?.registries ?? [], s.pid)?.transcript ?? []);
+        return m ? { ok: true, ...m } : fail('no_prompt', 'no assistant message yet');
+      } catch (e) { return toFail(e); }
+    },
+
     async clear(id) {
       if (!d.clear) return fail('unsupported', 'clearing sessions is not available');
       const s = find(id);
@@ -217,6 +242,15 @@ export function createActionService(d: ServiceDeps): ActionApi & { publicConfig(
       const err = await renameWindow(exec, host!, win, s.pid, target);
       if (err) return { ...r, message: `${r.message}${also}. The tmux window was not renamed: ${err}`, tmuxError: err };
       return { ...r, message: claude ? `${r.message}, in Claude Code and its tmux window` : `${r.message}, and its tmux window` };
+    },
+
+    // Only a listed session: the board could not open anything else, and an unknown id is the caller's mistake to hear.
+    async focus(id) {
+      if (!d.focus) return fail('unsupported', 'focusing a session is not available');
+      const s = find(id);
+      if (isFail(s)) return s;
+      d.focus.request(s.key);
+      return { ok: true, message: `Showing ${s.name} on the board` };
     },
 
     /** What the settings panel may show. Never includes tokens or credential contents. */

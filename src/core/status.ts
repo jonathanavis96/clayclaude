@@ -1,6 +1,7 @@
 import { basename } from 'node:path';
 import type { ContextRecord, RawRegistry, Session, SessionState } from '../types.js';
 import { extractTranscript } from './transcript.js';
+import { lastPromptsOf, mergePrompts, saidText } from './prompts.js';
 
 export interface HookEvent { event: string; sessionId: string; ts: number; message?: string }
 
@@ -47,6 +48,11 @@ export interface DeriveInput {
    * seen now is added; one in it stays on the 1M window after the turn that showed it has left the transcript tail.
    */
   wide?: Set<string>;
+  /**
+   * The prompts each session key was last seen with (the collector's, kept while it is on the board): the probe reads
+   * only the transcript tail, so prompts that scrolled out of it are kept from earlier polls. Updated here.
+   */
+  prompts?: Map<string, string[]>;
   /** The status line bridge's record for this session, if the probe found one. */
   context?: ContextRecord;
   /** The account's auto-compact window: Claude Code compacts there, so a smaller one is the window the session really has. */
@@ -176,6 +182,10 @@ export function deriveSession(i: DeriveInput, now: number): Session | null {
   const tokens = t.contextTokens ?? recTokens;
   const contextPct = tokens === null ? undefined : Math.min(100, Math.round((100 * tokens) / window));
   const cwd = str(d.cwd) ?? '';
+  const seen = lastPromptsOf(i.reg.transcript);
+  const lastPrompts = mergePrompts(i.prompts?.get(key), seen);
+  if (i.prompts && lastPrompts.length) i.prompts.set(key, lastPrompts);
+  const lastSaid = saidText(t.lastAssistantText);
   return {
     key,
     host: i.host, account: i.account, sessionId, pid,
@@ -187,6 +197,8 @@ export function deriveSession(i: DeriveInput, now: number): Session | null {
     currentAction: t.currentAction, question,
     lastAssistantAt: t.lastAssistantAt ?? undefined,
     ...(t.lastPromptAt !== null ? { lastPromptAt: t.lastPromptAt } : {}),
+    ...(lastPrompts.length ? { lastPrompts } : {}),
+    ...(lastSaid ? { lastSaid } : {}),
     cacheExpiresAt: t.lastResponseAt === null ? undefined : t.lastResponseAt + i.cacheTtlMinutes * 60_000,
     overContext: (contextPct ?? 0) >= 85,
     hostOnline: i.hostOnline, lastSeen: i.lastSeen,

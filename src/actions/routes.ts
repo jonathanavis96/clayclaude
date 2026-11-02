@@ -31,6 +31,8 @@ const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('prompt'), sessionId: Id }),
   z.object({ action: z.literal('clear'), sessionId: Id }),
   z.object({ action: z.literal('clear-stopped') }),
+  // The voice layer: open this session's focus view on every connected board. Sends nothing to any session.
+  z.object({ action: z.literal('focus'), sessionId: Id }),
   // Cleaned and checked (1 to 40 characters, no direction override) by the action itself; this only bounds the body.
   z.object({ action: z.literal('rename'), sessionId: Id, name: z.string().max(400).nullable(), tmux: z.boolean().optional(), claude: z.boolean().optional() }),
   // Task 43: cleaned and checked (one line, 1 to 4000 characters) by the action itself; this only bounds the body.
@@ -45,6 +47,8 @@ const Body = z.discriminatedUnion('action', [
       name: z.string().max(400).optional(),
       // Task 46: checked against the host's claude and the config by the launch itself; this only bounds the body.
       permissionMode: z.string().max(32).optional(), confirmBypass: z.boolean().optional(),
+      // The voice layer's first prompt: checked for control characters by the launch itself; this bounds it.
+      prompt: z.string().max(4000).optional(),
     }).default({}),
   }),
 ]).superRefine((b, ctx) => {
@@ -87,6 +91,8 @@ export function createActionRoutes(api: ActionApi, opts: RouteOptions): RouteHan
         if (p === '/api/launch/options') return send(res, 200, await api.launchOptions()), true;
         if (p === '/api/repos') return sendResult(res, await api.repos(url.searchParams.get('account') ?? '')), true;
         if (p === '/api/summary') return sendResult(res, await api.summary(url.searchParams.get('sessionId') ?? '')), true;
+        // The voice layer's full message (no X-Clayclaude header and no rate limit, like /api/summary: a read).
+        if (p === '/api/message') return sendResult(res, await api.lastMessage(url.searchParams.get('sessionId') ?? '')), true;
         return false;
       }
       if (req.method !== 'POST' || p !== '/api/action') return false;
@@ -106,6 +112,7 @@ export function createActionRoutes(api: ActionApi, opts: RouteOptions): RouteHan
         case 'prompt': return sendResult(res, await api.readPrompt(b.sessionId)), true;
         case 'clear': return sendResult(res, await api.clear(b.sessionId)), true;
         case 'clear-stopped': return sendResult(res, await api.clearStopped()), true;
+        case 'focus': return sendResult(res, api.focus ? await api.focus(b.sessionId) : fail('unsupported', 'focusing a session is not available')), true;
         case 'rename': return sendResult(res, await api.rename(b.sessionId, b.name, { tmux: b.tmux === true, ...(b.claude === true ? { claude: true } : {}) })), true;
         case 'message': return sendResult(res, await api.message({ sessionId: b.sessionId, text: b.text })), true;
         case 'launch': return sendResult(res, await api.launch({ account: b.account, repo: b.repo, options: b.options })), true;

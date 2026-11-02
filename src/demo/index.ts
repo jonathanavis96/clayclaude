@@ -213,7 +213,7 @@ export function createDemo(opts: DemoOptions = {}) {
       const name = given?.ok ? given.name : folder;
       const def: DemoDef = { id: `${folder}-${launched.length + 1}`, name, account: a.id as DemoDef['account'], host: a.host as DemoDef['host'], tmux: `${a.host === 'rack' ? 'agents' : 'desk'}:@${20 + launched.length}.%${20 + launched.length}`,
         bridge: req.options.remoteControl ? `session_demo_new${launched.length}` : undefined, model: req.options.model?.startsWith('claude-') ? req.options.model : `claude-${req.options.model ?? 'opus'}-5-5`, effort: req.options.effort ?? 'high', contextPct: 3,
-        segments: [{ state: 'working', fromMin: 0, toMin: 1_000_000 }], offsetMin: 0, lastPrompt: '', lastReply: '' };
+        segments: [{ state: 'working', fromMin: 0, toMin: 1_000_000 }], offsetMin: 0, lastPrompt: req.options.prompt ?? '', lastReply: '' };
       // A folder the account never trusted: a few seconds of STARTING, then the trust question, as on a real host (Task 40).
       if (folder === UNTRUSTED) Object.assign(def, { starting: true, prompt: 'trust', question: TRUST_QUESTION, contextPct: undefined,
         segments: [{ state: 'working', fromMin: 0, toMin: 0.05 }, { state: 'needs-you', fromMin: 0.05, toMin: 1_000_000 }] });
@@ -254,6 +254,12 @@ export function createDemo(opts: DemoOptions = {}) {
       const summary: SessionSummary = { lastPrompt: d.lastPrompt, lastAssistantText: d.lastReply, files: ['src/lib/backoff.ts', 'src/routes/orders.ts', 'test/orders.test.ts'], tools,
         toolCount: 40 + bucket % 7, tokensIn: 182_400, tokensOut: 14_950, startedAt: t - 95 * 60_000 };
       return { ok: true, summary };
+    },
+    async lastMessage(id) {
+      const s = find(id);
+      if (!s) return fail('unknown_session', 'that session is no longer listed');
+      const text = defOf(s).lastReply;
+      return text ? { ok: true, text, at: now() - 60_000, chars: text.length } : fail('no_prompt', 'no assistant message yet');
     },
   };
 

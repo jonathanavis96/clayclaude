@@ -381,6 +381,32 @@ Keys, jump hosts and ports stay in your `~/.ssh/config`. A host that stops answe
 </details>
 
 <details>
+<summary><b>Repo descriptions: <code>repoSummaries</code></b></summary>
+
+Each repo in **+ New** and in `GET /api/repos` carries a one-line `about` (at most 140 characters). It is read off the repo, in this order, and the first hit wins:
+
+1. The `description` in `package.json`, `pyproject.toml` (`[project]` or `[tool.poetry]`) or `Cargo.toml`.
+2. The README's tagline: the bold line in a centred header block, else the first plain paragraph after the title. Badges, images, link rows, headings and HTML are skipped, and a paragraph that opens with "Because", "And", "But" or "So" loses to a plainer one.
+3. The first sentence of the README's first paragraph of prose.
+
+The probe reads these files the safe way: a symlink is never followed, nothing outside the repo is read, only the first 2 KB of the README, and a head that looks like a secret is dropped.
+
+To have a small model write the line instead, turn on the summaries. **This is off by default because it costs money.**
+
+```yaml
+repoSummaries:
+  enabled: true
+  model: claude-haiku-5-5   # the default
+  bin: claude               # the claude binary on the daemon's machine
+```
+
+- Each repo gets one `claude -p --model claude-haiku-5-5 --effort low --tools ""` call on the machine the daemon runs on, with the README head and the manifest description as data on stdin. It reads no project settings, runs no hooks and saves no session. Measured on this repo: about 2.8 s and $0.0002 a call, so a hundred repos cost a couple of cents.
+- The line is kept in `state.json` (`repoAbout`), keyed by a hash of the inputs and the model, and made again only when the README head or the description changes.
+- Asking never delays the list: `/api/repos` carries the line read off the repo until the summary is ready, and the summary from the next request on. One call runs at a time. A failed call is logged and not retried for 30 minutes.
+
+</details>
+
+<details>
 <summary><b>Accounts</b></summary>
 
 One per Claude config directory on a host:
