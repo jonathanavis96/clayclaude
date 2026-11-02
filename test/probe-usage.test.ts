@@ -37,6 +37,21 @@ describe('probe usage', () => {
     await s.close();
   });
 
+  it('a weekly-only plan (five_hour null, seven_day present) is a good reading with five_hour null', async () => {
+    const week = { utilization: 47, resets_at: '2026-11-03T04:00:00+00:00' };
+    const s = await startStub({ usageStatusForOld: 200, tokenStatus: 200, usageBody: { five_hour: null, seven_day: week } });
+    const r = await run(s.url, [{ configDir: acct(far()), refresh: true }]);
+    expect(r.accounts[0]).toMatchObject({ ok: true, five_hour: null, seven_day: week });
+    await s.close();
+  });
+
+  it('an answer with neither five_hour nor seven_day is an error, not a reading', async () => {
+    const s = await startStub({ usageStatusForOld: 200, tokenStatus: 200, usageBody: { five_hour: null, seven_day: null } });
+    const r = await run(s.url, [{ configDir: acct(far()), refresh: true }]);
+    expect(r.accounts[0]).toMatchObject({ ok: false, error: expect.stringContaining('no five_hour or seven_day') });
+    await s.close();
+  });
+
   it('refreshes proactively near expiry, keeps mode and other keys, writes .bak', async () => {
     const s = await startStub({ usageStatusForOld: 401, tokenStatus: 200 });
     const d = acct(Date.now() + 60_000);

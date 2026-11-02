@@ -171,9 +171,21 @@ describe('before the first state arrives', () => {
 describe('usage meters', () => {
   it('shows an unknown figure as a bare dash, not "–%"', () => {
     const b = board(0);
-    b.usage = [{ account: 'a', label: 'A', colour: '#fff', fiveHour: null, weekly: 42, fiveHourResetsAt: null, weeklyResetsAt: null, stale: true, updatedAt: null } as any];
+    b.usage = [{ account: 'a', label: 'A', colour: '#fff', fiveHour: 10, weekly: null, fiveHourResetsAt: null, weeklyResetsAt: null, stale: true, updatedAt: null } as any];
     renderBoard(root, b, { meters: 'bars' });
-    expect([...root.querySelectorAll('.mnums .fig')].map((x) => x.textContent)).toEqual(['–', '42%']);
+    expect([...root.querySelectorAll('.mnums .fig')].map((x) => x.textContent)).toEqual(['10%', '–']);
+  });
+  it('a weekly-only plan shows the week alone: no 5h figure, no dash, no stale note', () => {
+    const b = board(0);
+    b.usage = [{ account: 'a', label: 'A', colour: '#fff', fiveHour: null, weekly: 42, fiveHourResetsAt: null, weeklyResetsAt: null, stale: false, updatedAt: 0 } as any];
+    for (const meters of ['bars', 'rings'] as const) {
+      renderBoard(root, b, { meters });
+      expect([...root.querySelectorAll('.mnums .fig')].map((x) => x.textContent), meters).toEqual(['42%']);
+      expect(root.querySelector('.meter')!.getAttribute('aria-label')).toBe('A: weekly 42%');
+      expect(root.querySelector('.meter .stale')).toBeNull();
+    }
+    renderBoard(root, b, { meters: 'bars' });
+    expect(root.querySelector('.mnums')!.textContent).not.toContain('5h');
   });
 });
 

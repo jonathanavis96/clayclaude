@@ -289,3 +289,48 @@ accounts:
     } finally { await s.close(); }
   });
 });
+
+describe('weekly-only plans: five_hour null with seven_day present', () => {
+  const T0 = Date.parse('2026-11-02T16:00:00Z');
+  const week = { utilization: 47, resets_at: iso(T0 + 86_400_000) };
+  const weekly = { five_hour: null, seven_day: week };
+  const poll = async (provider: string, answer: object, t = T0, ts?: number) => {
+    const c = parseConfig(acct(provider));
+    const p = new UsagePoller(c, { now: () => t, log: () => {},
+      probe: async (_h, r: any) => ({ ok: true, accounts: r.accounts.map((a: any) => ({ key: a.key, configDir: a.configDir, ok: true, ...(ts ? { ts: iso(ts) } : {}), ...answer })) }) });
+    await p.pollOnce();
+    return p;
+  };
+
+  it('oauth: shows the week, no five-hour figure, not stale; /usage keeps five_hour null', async () => {
+    const p = await poll('{provider: oauth}', weekly);
+    expect(p.usage()[0]).toMatchObject({ fiveHour: null, fiveHourResetsAt: null, weekly: 47, stale: false });
+    expect(p.publicShape().d).toMatchObject({ five_hour: null, seven_day: week, stale: false });
+    expect(p.isExhausted('d')).toBe(false);
+  });
+
+  it('oauth: an account that still returns five_hour is unchanged', async () => {
+    const p = await poll('{provider: oauth}', reading(1, iso(T0 + 3600_000), 22, iso(T0 + 86_400_000)));
+    expect(p.usage()[0]).toMatchObject({ fiveHour: 1, weekly: 22, stale: false });
+  });
+
+  it('both buckets missing is still a failed read: stale, and nothing is shown as a figure', async () => {
+    const p = await poll('{provider: oauth}', { five_hour: null, seven_day: null });
+    expect(p.usage()[0]).toMatchObject({ fiveHour: null, weekly: null, stale: true });
+  });
+
+  it('token: a weekly-only reading is fresh, and is asked again after 5 minutes rather than held for ever', async () => {
+    let t = T0; let n = 0;
+    const p = new UsagePoller(parseConfig(acct('{provider: token, tokenEnv: GS_T}')), { now: () => t, log: () => {},
+      probe: async (_h, r: any) => { if (r.accounts.length) n++; return { ok: true, accounts: r.accounts.map((a: any) => ({ key: a.key, configDir: a.configDir, ok: true, ...weekly })) }; } });
+    for (let i = 0; i < 12; i++) { await p.pollOnce(); expect(p.usage()[0]).toMatchObject({ fiveHour: null, weekly: 47, stale: false }); t += MIN; }
+    expect(n).toBe(3);
+  });
+
+  it('meter-log: a fresh weekly-only line is fresh; an old one goes stale (not held: no five-hour window to lapse)', async () => {
+    const fresh = await poll('{provider: meter-log, log: ~/m.log}', { ...weekly, idle: false }, T0, T0 - 2 * MIN);
+    expect(fresh.usage()[0]).toMatchObject({ fiveHour: null, weekly: 47, stale: false });
+    const old = await poll('{provider: meter-log, log: ~/m.log}', { ...weekly, idle: true }, T0, T0 - 120 * MIN);
+    expect(old.usage()[0]).toMatchObject({ fiveHour: null, weekly: 47, stale: true });
+  });
+});

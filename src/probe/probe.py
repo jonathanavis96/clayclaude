@@ -861,6 +861,9 @@ def usage(req):
                 u = _one(d, bool(a.get("refresh", True)), secrets)
             if "held" in u:
                 entry.update(ok=True, held=u["held"])
+            elif not any(isinstance(u.get(k), dict) for k in ("five_hour", "seven_day")):
+                # five_hour null with seven_day present is a weekly-only plan, not a failure; neither is an error
+                raise ValueError("no five_hour or seven_day in the usage response")
             else:
                 entry.update(ok=True, five_hour=u.get("five_hour"), seven_day=u.get("seven_day"))
                 if kind == "meter-log":
@@ -997,8 +1000,11 @@ def _token_usage(a, d, secrets):
         h = {k.lower(): v for k, v in r.headers.items()}
     if not any(RL_PREFIX + k in h for k in ("5h-utilization", "7d-utilization")):
         raise ValueError("no rate-limit headers in the reply")
-    return {"five_hour": {"utilization": _pct(h.get(RL_PREFIX + "5h-utilization")), "resets_at": _epoch_iso(h.get(RL_PREFIX + "5h-reset"))},
-            "seven_day": {"utilization": _pct(h.get(RL_PREFIX + "7d-utilization")), "resets_at": _epoch_iso(h.get(RL_PREFIX + "7d-reset"))}}
+    def window(k):  # a weekly-only account sends no 5h headers: null, never a made-up 0%
+        if not any(RL_PREFIX + k + s in h for s in ("-utilization", "-reset")):
+            return None
+        return {"utilization": _pct(h.get(RL_PREFIX + k + "-utilization")), "resets_at": _epoch_iso(h.get(RL_PREFIX + k + "-reset"))}
+    return {"five_hour": window("5h"), "seven_day": window("7d")}
 
 
 # --- the models an account's token can use (Task 46: the + New launcher's model list) ---
@@ -1092,7 +1098,8 @@ def _meter_log(path):
             d = loads(line)
         except ValueError:
             continue
-        if isinstance(d, dict) and "error" not in d and isinstance(d.get("five_hour"), dict):
+        # A weekly-only account has no five-hour window: its line carries five_hour null (or none) and a seven_day object.
+        if isinstance(d, dict) and "error" not in d and any(isinstance(d.get(k), dict) for k in ("five_hour", "seven_day")):
             return {"ts": d.get("ts"), "five_hour": d.get("five_hour"), "seven_day": d.get("seven_day")}
     raise LookupError("no reading in the meter log")
 

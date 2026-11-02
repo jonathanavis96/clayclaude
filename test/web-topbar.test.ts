@@ -70,8 +70,8 @@ describe('top bar', () => {
     expect(root.querySelector('.mbars')).toBeNull();
     // the round-3 bars meter, unchanged except that its figure line is fixed-width: bar, label, then "5h N% / wk N%"
     expect([...root.querySelectorAll('.meter')].map((m) => [...m.children].map((c) => c.getAttribute('class')))).toEqual([['bars', 'mlabel', 'mnums'], ['bars', 'mlabel', 'mnums']]);
-    expect([...root.querySelectorAll('.mnums')].map((x) => x.textContent)).toEqual(['5h 41% / wk 63%', '5h – / wk 7%']);
-    expect([...root.querySelectorAll('.mnums')].map((x) => [...x.children].map((c) => c.className))).toEqual(Array(2).fill(['k', 'fig', 'sep', 'k', 'fig']));
+    expect([...root.querySelectorAll('.mnums')].map((x) => x.textContent)).toEqual(['5h 41% / wk 63%', 'wk 7%']); // b has no five-hour window: the week alone
+    expect([...root.querySelectorAll('.mnums')].map((x) => [...x.children].map((c) => c.className))).toEqual([['k', 'fig', 'sep', 'k', 'fig'], ['k', 'fig']]);
     expect(root.querySelector('.meter')!.getAttribute('aria-label')).toBe('A: 5-hour 41%, weekly 63%');
   });
 });

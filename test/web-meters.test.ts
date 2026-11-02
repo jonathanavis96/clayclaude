@@ -18,6 +18,18 @@ describe('meters', () => {
   it('bars render two bars', () => {
     expect(barsSvg(u(10, 20)).match(/<rect/g)!.length).toBe(4);
   });
+  it('a weekly-only plan (no five-hour limit): one ring and one bar, the week figure, no 5h figure and no 0%', () => {
+    const rings = ringsSvg(u(null, 47));
+    expect(rings).toContain('>47%<');
+    expect(rings.match(/<circle/g)!.length).toBe(2);
+    expect(rings).not.toContain('>–<');
+    expect(barsSvg(u(null, 47)).match(/<rect/g)!.length).toBe(2);
+    expect(barsSvg(u(null, 47, true))).toContain('opacity:.45'); // stale still dims it
+  });
+  it('a five-hour figure of 0 is still a figure, not weekly-only', () => {
+    expect(ringsSvg(u(0, 47)).match(/<circle/g)!.length).toBe(4);
+    expect(barsSvg(u(0, 47)).match(/<rect/g)!.length).toBe(4);
+  });
   it('a stale meter says "stale" with the age of its last value, in rings and in bars (spec §12)', () => {
     const NOW = Date.parse('2026-10-12T12:00:00Z');
     const old = { ...u(41, 63, true), updatedAt: NOW - 25 * 60_000 };

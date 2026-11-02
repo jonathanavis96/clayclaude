@@ -1,5 +1,6 @@
 import type { AccountUsage, Session } from '../../src/types.js';
 import { formatDate } from './board.js';
+import { weeklyOnly } from './meters.js';
 import { esc } from './html.js';
 import { formatAge, formatCountdown, sortSessions } from './order.js';
 
@@ -44,7 +45,7 @@ export function accountHtml(u: AccountUsage, sessions: Session[], now: number): 
   return `<div class="account-panel" style="--c:${esc(u.colour)}">`
     + `<header><h2>${esc(u.label)}</h2>${u.plan ? `<span class="plan">${esc(u.plan)}</span>` : ''}<button class="x" data-act="close" aria-label="Close">×</button></header>`
     + (who ? `<div class="acct-who">${who}</div>` : '')
-    + `<div class="acct-wins">${windowHtml('5-hour', u.fiveHour, u.fiveHourResetsAt, esc(u.colour), now, true)}`
+    + `<div class="acct-wins">${weeklyOnly(u) ? '' : windowHtml('5-hour', u.fiveHour, u.fiveHourResetsAt, esc(u.colour), now, true)}`
     + `${windowHtml('Weekly', u.weekly, u.weeklyResetsAt, esc(u.colour), now, false)}</div>`
     + `<h3>Sessions</h3><div class="acct-sessions">${list}</div>`
     + `<div class="acct-age${u.stale ? ' warn' : ' muted'}">${esc(ageText(u, now))}</div></div>`;

@@ -47,6 +47,18 @@ describe('probe usage: token kind', () => {
     expect(out).not.toContain(FAKE);
   });
 
+  it('a reply with no 5h headers (a weekly-only plan) gives five_hour null and the week; no headers at all is an error', async () => {
+    const home = dir(); writeFileSync(join(home, 'env'), `CC_TEST_TOKEN=${FAKE}\n`);
+    const a = { kind: 'token', key: 'a', configDir: home, tokenEnv: 'CC_TEST_TOKEN', envFile: join(home, 'env') };
+    const all = { ...s.headers };
+    try {
+      for (const k of Object.keys(s.headers)) if (k.includes('-5h-')) delete s.headers[k];
+      expect((await probe([a], env(), home)).r.accounts[0]).toMatchObject({ ok: true, five_hour: null, seven_day: { utilization: 40 } });
+      for (const k of Object.keys(s.headers)) if (k.includes('-7d-')) delete s.headers[k];
+      expect((await probe([a], env(), home)).r.accounts[0]).toMatchObject({ ok: false });
+    } finally { s.headers = all; }
+  });
+
   it('the process environment wins over the env file', async () => {
     const home = dir();
     writeFileSync(join(home, 'env'), 'CC_TEST_TOKEN=from-file-FAKE\n');
@@ -166,6 +178,19 @@ describe('probe usage: meter-log kind', () => {
     const { r } = await probe([{ kind: 'meter-log', key: 'work', configDir: home, log: '~/ops/m.log' }], {}, home);
     expect(r.accounts[0]).toEqual({ key: 'work', configDir: home, email: null, ok: true, ts: '2026-10-12T22:56:45+00:00', idle: true,
       five_hour: { utilization: 7, resets_at: '2026-10-13T02:30:00+00:00' }, seven_day: { utilization: 22, resets_at: '2026-10-15T23:00:00+00:00' } });
+  });
+
+  it('takes a weekly-only line (five_hour null or absent, seven_day present); a line with neither is skipped', async () => {
+    const home = dir(); mkdirSync(join(home, 'ops'));
+    const week = { utilization: 5, resets_at: '2026-11-05T23:00:00+00:00' };
+    const log = (...lines: object[]) => writeFileSync(join(home, 'ops', 'm.log'), lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+    const a = { kind: 'meter-log', key: 'work', configDir: home, log: '~/ops/m.log' };
+    log({ ts: '2026-11-02T16:00:00+00:00', five_hour: null, seven_day: week });
+    expect((await probe([a], {}, home)).r.accounts[0]).toMatchObject({ ok: true, five_hour: null, seven_day: week, ts: '2026-11-02T16:00:00+00:00', idle: false });
+    log({ ts: '2026-11-02T16:00:00+00:00', seven_day: week });
+    expect((await probe([a], {}, home)).r.accounts[0]).toMatchObject({ ok: true, seven_day: week });
+    log({ ts: '2026-11-02T16:00:00+00:00', five_hour: null, seven_day: null });
+    expect((await probe([a], {}, home)).r.accounts[0]).toMatchObject({ ok: false });
   });
 
   it('reports idle only while <configDir>/sessions is missing or untouched since the reading\'s five-hour reset', async () => {
