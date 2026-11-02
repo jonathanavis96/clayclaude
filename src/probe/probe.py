@@ -253,7 +253,7 @@ def trim_line(line, clip, text_clip=None):
                 continue
             bt = b.get("type")
             if bt == "text" and text_clip and t == "assistant" and isinstance(b.get("text"), str):
-                keep[len(out)] = b["text"][:text_clip]  # put back after the backstop below
+                keep[len(out)] = (b["text"][:text_clip], len(b["text"]))  # put back after the backstop below
             if bt in ("text", "thinking"):
                 b[bt] = clip_str(b.get(bt), clip)
                 b.pop("signature", None)
@@ -270,8 +270,11 @@ def trim_line(line, clip, text_clip=None):
             out.append(b)
         msg["content"] = out
     d = clip_obj(d, clip)  # backstop: no field the rules above miss can ship at full size
-    for i, text in keep.items():
-        d["message"]["content"][i]["text"] = text
+    for i, (text, n) in keep.items():
+        blk = d["message"]["content"][i]
+        blk["text"] = text
+        if n > len(text):
+            blk["textChars"] = n  # the length before the clip, so the caller can report it
     return json.dumps(d, separators=(",", ":"))
 
 

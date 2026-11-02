@@ -33,6 +33,9 @@ describe('lastAssistantMessage', () => {
     const m = lastAssistantMessage([asst('a', 'x', [{ type: 'text', text: 'y'.repeat(70_000) }])]);
     expect(m).toMatchObject({ chars: 70_000, truncated: true, at: null });
     expect(m!.text.length).toBe(MAX_MESSAGE_CHARS);
+    // The probe cuts a block at textClip and records its length before the cut; `chars` counts that length.
+    const clipped = lastAssistantMessage([asst('a', 'x', [{ type: 'text', text: 'y'.repeat(MAX_MESSAGE_CHARS + 1), textChars: 100_000 }])]);
+    expect(clipped).toMatchObject({ chars: 100_000, truncated: true });
     expect(lastAssistantMessage([asst('a', 'x', [{ type: 'tool_use', name: 'Read', input: {} }])])).toBeNull();
     expect(lastAssistantMessage([asst('a', '2026-10-21T10:00:00Z', [{ type: 'text', text: 'main' }]),
       asst('b', '2026-10-21T10:00:01Z', [{ type: 'text', text: 'side' }], { isSidechain: true })])!.text).toBe('main');
@@ -51,6 +54,7 @@ describe('probe snapshot textClip', () => {
     const lines = r.dirs[0].registries[0].transcript.map((l: string) => JSON.parse(l));
     expect(lines[0].message.content.length).toBe(100);
     expect(lines[1].message.content[0].text.length).toBe(500);
+    expect(lines[1].message.content[0].textChars).toBe(900);   // the length before the clip, for `chars`
     expect(lines[1].message.content[1].input.command.length).toBe(100);
     const plain = runProbeSync({ mode: 'snapshot', dirs: [d], only: 'tc', clip: 100 });
     expect(JSON.parse(plain.dirs[0].registries[0].transcript[1]).message.content[0].text.length).toBe(100);

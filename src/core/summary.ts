@@ -71,20 +71,25 @@ export const MAX_MESSAGE_CHARS = 65_536;
  * text. Pure.
  */
 export function lastAssistantMessage(lines: string[], cap = MAX_MESSAGE_CHARS): LastMessage | null {
-  let id: unknown, texts: string[] = [], at: number | null = null;
+  let id: unknown, texts: string[] = [], at: number | null = null, clipped = 0;   // clipped: characters the probe cut off
   for (const line of lines) {
     let e: any;
     try { e = JSON.parse(line); } catch { continue; }
     if (e?.type !== 'assistant' || e.isSidechain === true) continue;
-    const blocks = (Array.isArray(e.message?.content) ? e.message.content : [])
-      .filter((b: any) => b?.type === 'text' && typeof b.text === 'string' && b.text.trim()).map((b: any) => b.text.trim());
-    if (!blocks.length) continue;
+    const items = (Array.isArray(e.message?.content) ? e.message.content : [])
+      .filter((b: any) => b?.type === 'text' && typeof b.text === 'string' && b.text.trim());
+    if (!items.length) continue;
     const mid = e.message?.id ?? e.requestId ?? Symbol();
-    if (mid !== id) { id = mid; texts = []; }
-    texts.push(...blocks);
+    if (mid !== id) { id = mid; texts = []; clipped = 0; }
+    for (const b of items) {
+      texts.push(b.text.trim());
+      // The probe sets `textChars` on a block it cut short: the length before the cut.
+      if (Number.isFinite(b.textChars) && b.textChars > b.text.length) clipped += b.textChars - b.text.length;
+    }
     at = typeof e.timestamp === 'string' && Number.isFinite(Date.parse(e.timestamp)) ? Date.parse(e.timestamp) : null;
   }
   if (!texts.length) return null;
   const full = texts.join('\n\n');
-  return full.length > cap ? { text: full.slice(0, cap), at, chars: full.length, truncated: true } : { text: full, at, chars: full.length };
+  const chars = full.length + clipped;
+  return chars > cap ? { text: full.slice(0, cap), at, chars, truncated: true } : { text: full, at, chars };
 }
