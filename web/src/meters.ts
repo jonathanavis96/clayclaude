@@ -12,7 +12,22 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&
 const staleNote = (u: AccountUsage, now: number) =>
   u.stale ? `<div class="stale">stale${u.updatedAt ? ` · ${formatAge(now - u.updatedAt)}` : ''}</div>` : '';
 
+/**
+ * A plan with no five-hour limit (Max 20x is moving to weekly-only): the usage response has seven_day and a null
+ * five_hour. Decided per reading, never from the plan name. Not the same as "no data yet" (both null).
+ */
+export const weeklyOnly = (u: AccountUsage): boolean => u.fiveHour === null && u.weekly !== null;
+
 export function ringsSvg(u: AccountUsage, now = Date.now()): string {
+  if (weeklyOnly(u)) {
+    // One ring, the week, with its figure in the centre; nothing is drawn for the window the plan does not have.
+    return `<svg class="rings" viewBox="0 0 56 56" style="${u.stale ? 'opacity:.45' : ''}">`
+      + (u.stale ? '<title>stale</title>' : '')
+      + `<g transform="rotate(-90 28 28)" fill="none">`
+      + `<circle cx="28" cy="28" r="24" stroke="${u.colour}" stroke-opacity=".18" stroke-width="5"/>`
+      + `<circle cx="28" cy="28" r="24" stroke="${u.colour}" stroke-width="5" stroke-linecap="round" ${arc(24, u.weekly)}/>`
+      + `</g><text x="28" y="32" text-anchor="middle" class="ring-pct">${Math.round(u.weekly!)}%</text></svg>` + staleNote(u, now);
+  }
   const outer = (u.fiveHour ?? 0) >= 80 ? 'var(--needs)' : u.colour;
   const label = u.fiveHour === null ? '–' : `${Math.round(u.fiveHour)}%`;
   return `<svg class="rings" viewBox="0 0 56 56" style="${u.stale ? 'opacity:.45' : ''}">`
@@ -29,6 +44,8 @@ export function barsSvg(u: AccountUsage, now = Date.now()): string {
   const bar = (y: number, pct: number | null, colour: string) =>
     `<rect x="0" y="${y}" width="64" height="6" rx="3" fill="${u.colour}" fill-opacity=".18"/>`
     + `<rect x="0" y="${y}" width="${(64 * Math.max(0, Math.min(100, pct ?? 0))) / 100}" height="6" rx="3" fill="${colour}"/>`;
+  const only = weeklyOnly(u); // a weekly-only plan: one bar, centred, no empty five-hour bar above it
   return `<svg class="bars" viewBox="0 0 64 16" preserveAspectRatio="none" style="${u.stale ? 'opacity:.45' : ''}">`
-    + bar(0, u.fiveHour, (u.fiveHour ?? 0) >= 80 ? 'var(--needs)' : u.colour) + bar(10, u.weekly, u.colour) + `</svg>` + staleNote(u, now);
+    + (only ? bar(5, u.weekly, u.colour) : '')
+    + (only ? '' : bar(0, u.fiveHour, (u.fiveHour ?? 0) >= 80 ? 'var(--needs)' : u.colour) + bar(10, u.weekly, u.colour)) + `</svg>` + staleNote(u, now);
 }

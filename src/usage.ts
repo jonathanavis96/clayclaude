@@ -158,14 +158,16 @@ export class UsagePoller extends EventEmitter {
     this.state.set(a.id, { ...this.state.get(a.id)!, updatedAt: Number.isFinite(r.ts) ? r.ts : null });
     const held = a.usage.provider === 'meter-log'
       ? idle && at(window(r.five)) <= now && at(window(r.week)) > now
-      : !five?.resets_at || capped(r, now);
+      : (!!five && !five.resets_at) || capped(r, now); // no five-hour window at all (weekly-only) has none to lapse
     this.staleAfter.set(a.id, held ? Infinity : READING_STALE_MS);
   }
 
   private set(a: AccountConfig, five: UsageWindow | null, week: UsageWindow | null, id?: Who) {
+    five = window(five); week = window(week);
+    // five_hour null with seven_day present is a plan with no five-hour limit: fine. Neither is a failed read.
+    if (!five && !week) return this.fail(a.id, 'no five_hour or seven_day in the usage response');
     this.backoff.delete(a.id);
     if (this.failing.delete(a.id)) this.log(`clayclaude: usage for ${a.id} is back`);
-    five = window(five); week = window(week);
     const was = this.state.get(a.id);
     this.state.set(a.id, { ...blank(a), email: (typeof id?.email === 'string' ? id.email : null) ?? was?.email ?? null,
       name: id?.name ?? was?.name ?? null, plan: id?.plan ?? was?.plan ?? null,

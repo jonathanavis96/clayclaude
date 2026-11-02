@@ -1,6 +1,6 @@
 import type { AccountUsage, Session } from '../../src/types.js';
 import { formatAge, formatCountdown, sortSessions } from './order.js';
-import { barsSvg, ringsSvg } from './meters.js';
+import { barsSvg, ringsSvg, weeklyOnly } from './meters.js';
 import { actionHtml, rowActionsHtml } from './row-actions.js';
 import { applyFilter, COUNT_FILTERS, type CountFilter } from './filter.js';
 import { chooseLayout, stripsNeed, type Layout, type LayoutPref } from './layout.js';
@@ -68,10 +68,11 @@ export function formatDate(d: Date, locale?: string): string {
  */
 function meterHtml(u: AccountUsage, mode: Prefs['meters']): string {
   const fig = (v: number | null) => `<span class="fig">${v === null ? '–' : `${Math.round(v)}<span class="pc">%</span>`}</span>`;
-  const label = `${u.label}: 5-hour ${pct(u.fiveHour)}, weekly ${pct(u.weekly)}`;
+  const only = weeklyOnly(u); // no five-hour limit on this plan: no 5h figure, not a 0%
+  const label = only ? `${u.label}: weekly ${pct(u.weekly)}` : `${u.label}: 5-hour ${pct(u.fiveHour)}, weekly ${pct(u.weekly)}`;
   const body = mode === 'rings'
     ? `${ringsSvg(u)}<span class="mlabel">${esc(u.label)}</span><span class="mnums">wk ${fig(u.weekly)}</span>`
-    : `${barsSvg(u)}<span class="mlabel">${esc(u.label)}</span><span class="mnums"><span class="k">5h </span>${fig(u.fiveHour)}<span class="sep"> / </span><span class="k">wk </span>${fig(u.weekly)}</span>`;
+    : `${barsSvg(u)}<span class="mlabel">${esc(u.label)}</span><span class="mnums">${only ? '' : `<span class="k">5h </span>${fig(u.fiveHour)}<span class="sep"> / </span>`}<span class="k">wk </span>${fig(u.weekly)}</span>`;
   return `<button class="meter" data-account="${esc(u.account)}" title="${esc(u.email ?? '')}" aria-label="${esc(label)}">${body}</button>`;
 }
 

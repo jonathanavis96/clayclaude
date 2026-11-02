@@ -20,6 +20,20 @@ const state = (u = usage()): BoardState => ({
 });
 const text = (html: string) => { const d = document.createElement('div'); d.innerHTML = html; return d.textContent!.replace(/\s+/g, ' '); };
 
+describe('account popup content, weekly-only plan', () => {
+  it('shows the week and the plan but no 5-hour row, and says stale only when it is stale', () => {
+    const t = text(accountHtml(usage({ fiveHour: null, fiveHourResetsAt: null }), [], NOW));
+    expect(t).toContain('Weekly');
+    expect(t).toContain('54%');
+    expect(t).toContain('Max 20x');
+    expect(t).not.toContain('5-hour');
+    expect(t).not.toContain('stale');
+  });
+  it('a plan that still has a 5-hour window keeps both rows', () => {
+    expect(text(accountHtml(usage(), [], NOW))).toContain('5-hour');
+  });
+});
+
 describe('account popup content', () => {
   it('shows label, name, email, plan, both windows with their resets, the sessions on the account and the age', () => {
     const s = state();
