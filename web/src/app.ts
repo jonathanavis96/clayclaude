@@ -78,13 +78,15 @@ export function initApp(ctx: AppCtx) {
   // same view already open, alone, is left as it is.
   const remote = new RemoteFocus();
   const shown = (k: string) => !!session(k);
+  let remoteGen = 0;   // the latest request wins: a view waiting on the history step is dropped when a newer one arrives
   const showRemote = (key: string | null) => {
     if (!key) return;
+    const gen = ++remoteGen;
     if (focused === key && overlayCount() === 1) return;
     if (!overlayCount()) { focus(key); return; }
     closeAllOverlays();
     // Closing steps the browser history back asynchronously; open the view after that settles (as onSwitch does).
-    setTimeout(() => focus(key), 120);
+    setTimeout(() => { if (gen === remoteGen) focus(key); }, 120);
   };
 
   // Counts filter the board, a meter opens its account, and the clock or blank space clears the filter on a tap and
