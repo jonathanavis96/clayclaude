@@ -1163,6 +1163,17 @@ SECRET_HEAD = re.compile(
     re.M | re.I)
 
 
+def looks_secret(text):
+    """True if `text` looks like it holds a secret: checked as it was read, on each of its lines (splitlines also splits
+    on \\r and other separators the regex's ^ does not know), and with whitespace collapsed. Never only the collapsed
+    form: that joins "prose" and a following "API_TOKEN=..." line into one line the ^ anchor no longer matches."""
+    if SECRET_HEAD.search(text):
+        return True
+    if any(SECRET_HEAD.search(line) for line in text.splitlines()):
+        return True
+    return bool(SECRET_HEAD.search(re.sub(r"[\x00-\x1f\x7f\s]+", " ", text).strip()))
+
+
 def _read_inside(repo, name, limit):
     """Up to `limit` bytes of the regular file `name` directly inside `repo`, or None.
 
@@ -1190,7 +1201,7 @@ def readme_head(repo):
         head = _read_inside(repo, n, README_HEAD)
         if head is None:
             continue
-        if SECRET_HEAD.search(head):
+        if looks_secret(head):
             return None
         return head
     return None
@@ -1258,8 +1269,10 @@ def manifest_description(repo):
         d = _json_description(text) if n.endswith(".json") else _toml_description(text)
         if not isinstance(d, str):
             continue
+        if looks_secret(d):
+            continue
         d = re.sub(r"[\x00-\x1f\x7f\s]+", " ", d).strip()[:MANIFEST_ABOUT]
-        if d and not SECRET_HEAD.search(d):
+        if d:
             return d
     return None
 

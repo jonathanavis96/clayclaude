@@ -137,6 +137,15 @@ describe('probe repos manifest', () => {
   mk('none', { 'package.json': '{"name":"x"}' });
   mk('bad', { 'package.json': '{"name":"x", "description": "Still found", "scripts": {' });
   mk('secret', { 'package.json': JSON.stringify({ description: 'API_TOKEN=abcdef' }) });
+  mk('secret2', { 'package.json': JSON.stringify({ description: 'A tidy parser.\nAPI_TOKEN=abcdef' }) });
+  mk('secret3', { 'package.json': JSON.stringify({ description: 'A tidy parser.\n    export SECRET_KEY = abcdef' }) });
+  mk('secretcr', { 'package.json': JSON.stringify({ description: 'A tidy parser.\rDB_PASSWORD=abcdef' }) });
+  mk('secrettoml', { 'pyproject.toml': '[project]\nname = "x"\ndescription = "A tidy parser.\\n\\tAPI_TOKEN=abcdef"\n' });
+  mk('secretkey', { 'package.json': JSON.stringify({ description: 'A tidy parser.\n-----BEGIN RSA PRIVATE KEY-----' }) });
+  mk('rd1', { 'README.md': '# app\n\nA tidy parser.\nAPI_TOKEN=abcdef\n' });
+  mk('rd2', { 'README.md': '# app\n\nA tidy parser.\n   export SECRET_KEY=abcdef\n' });
+  mk('rd3', { 'README.md': '# app\r\rA tidy parser.\rDB_PASSWORD=abcdef\r' });
+  mk('rd4', { 'README.md': '# app\n\nA tidy parser with TOKEN_COUNT limits.\n' });
   const out = mk('link', {});
   mkdirSync(join(home, '.ssh'));
   writeFileSync(join(home, '.ssh', 'package.json'), '{"description":"stolen"}');
@@ -155,6 +164,14 @@ describe('probe repos manifest', () => {
     expect(m('none')).toBeUndefined();
     expect(m('secret')).toBeUndefined();
     expect(m('link')).toBeUndefined();
+  });
+  it('drops a description with a secret on any line, however the lines are joined or indented', () => {
+    for (const n of ['secret2', 'secret3', 'secretcr', 'secrettoml', 'secretkey']) expect(m(n), n).toBeUndefined();
+  });
+  it('sends no README head with a secret on a later line, after leading whitespace, or after a bare CR', () => {
+    const readme = (n: string) => r.repos.find((x: any) => x.name === n).readme;
+    for (const n of ['rd1', 'rd2', 'rd3']) expect(readme(n), n).toBeUndefined();
+    expect(readme('rd4')).toContain('A tidy parser');
   });
   it('sends nothing unless the README flag is set', () => {
     expect(run({ mode: 'repos', roots: ['~/code'], configDirs: [] }).repos.find((x: any) => x.name === 'npm').manifest).toBeUndefined();
