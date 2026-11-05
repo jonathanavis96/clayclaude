@@ -232,3 +232,40 @@ describe('AdbReverse and another adb server (one adb only)', () => {
     expect(all.some((c) => c.includes(KILL) || /start-server|reconnect/.test(c))).toBe(false);
   });
 });
+
+describe('AdbReverse when adb hangs (a dead WSL interop socket)', () => {
+  const timedOut = () => Object.assign(new Error('Command failed: adb.exe devices'), { killed: true, signal: 'SIGTERM' });
+  const opts = (run: (a: string[]) => Promise<string>, logs: string[], onAdbFailed: () => string | undefined, onAdbWorks: () => void) =>
+    ({ run, log: (m: string) => logs.push(m), onAdbFailed, onAdbWorks });
+
+  it('asks for another socket, logs the move, and restores the reverse on the next tick', async () => {
+    const { st, run } = fakeAdb();
+    st.device = true;
+    let hung = true; const logs: string[] = [], picks: string[] = []; let works = 0;
+    const a = new AdbReverse('/mnt/c/x/adb.exe', 8420, opts(async (all) => { if (hung) throw timedOut(); return run(all); }, logs,
+      () => { hung = false; picks.push('next'); return '/run/WSL/300_interop'; }, () => { works++; }));
+    expect(await a.tick()).toBe('no-device');
+    expect(picks).toEqual(['next']);
+    expect(logs.join('\n')).toContain('/run/WSL/300_interop');
+    expect(await a.tick()).toBe('applied');
+    expect(st.reversed).toBe(true);
+    expect(works).toBe(1);
+    expect(logs.join('\n')).toContain('adb is back');
+  });
+
+  it('does not ask for a socket when adb is simply not installed', async () => {
+    const logs: string[] = []; let asked = 0;
+    const missing = Object.assign(new Error('spawn adb.exe ENOENT'), { code: 'ENOENT' });
+    const a = new AdbReverse('/no/adb.exe', 8420, opts(async () => { throw missing; }, logs, () => { asked++; return undefined; }, () => {}));
+    await a.tick();
+    expect(asked).toBe(0);
+  });
+
+  it('logs each move at most once per stretch: no line every 3 s while every socket fails', async () => {
+    const logs: string[] = [];
+    const picks = ['/run/WSL/300_interop', undefined, '/run/WSL/300_interop', undefined];
+    const a = new AdbReverse('/mnt/c/x/adb.exe', 8420, opts(async () => { throw timedOut(); }, logs, () => picks.shift(), () => {}));
+    for (let i = 0; i < 4; i++) await a.tick();
+    expect(logs.filter((l) => l.includes('/run/WSL/300_interop'))).toHaveLength(1);
+  });
+});

@@ -115,6 +115,15 @@ All notable changes to clayclaude are listed here. The format follows
 
 ### Fixed
 
+- **Under WSL, a hung interop socket no longer cuts the tablet off.** A systemd
+  service has no `WSL_INTEROP`, so it starts Windows programs through the boot
+  socket. When that socket hung, every `adb.exe` call timed out while the same
+  command worked from a terminal, so the daemon could not put the reverse back
+  and the board stayed on "Disconnected"; restarting the daemon did not help.
+  When adb fails, the daemon now moves `WSL_INTEROP` to the next live socket in
+  `/run/WSL`, which also covers the other Windows programs it starts, and logs
+  the move and the recovery.
+
 - **The hotkey no longer reloads the board.** It brings Chrome forward with its
   launcher intent, showing the open board tab, instead of opening the board's
   URL, which re-navigated the tab. The scrcpy window is titled `clayclaude`, and
