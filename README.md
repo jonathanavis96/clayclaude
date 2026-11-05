@@ -554,6 +554,8 @@ Yes. Open `http://127.0.0.1:8421` in any browser on this PC for the demo, or `ht
 
 Check the daemon is running, then `adb devices` (the tablet must show as `device`, not `unauthorized`: accept the prompt on the tablet) and `adb reverse --list`. The daemon re-applies the reverse within 3 seconds of the tablet appearing. Under WSL, `tablet.adb` must be the Windows `adb.exe`.
 
+Under WSL, if `adb.exe` works from a terminal but the daemon's log says it cannot run adb, the WSL interop socket the daemon was using has hung. The daemon moves to another live socket by itself and logs `adb failed, trying the WSL interop socket ...`. It needs another one to exist: open a WSL terminal if none is open.
+
 </details>
 
 <details>

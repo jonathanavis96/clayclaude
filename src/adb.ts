@@ -17,19 +17,26 @@ export class AdbReverse {
   private connected = new Set<string>();
   private other?: OtherAdb;
   private now: () => number;
-  constructor(private adbBin: string, private port: number, opts: { run?: (args: string[]) => Promise<string>; intervalMs?: number; log?: (msg: string) => void; onConnect?: (serial: string) => void; other?: OtherAdb; now?: () => number } = {}) {
+  /** adb ran but failed or hung: try another route to it (under WSL, another interop socket). Returns the route, if it moved. */
+  private onAdbFailed?: () => string | undefined;
+  private onAdbWorks?: () => void;
+  constructor(private adbBin: string, private port: number, opts: { run?: (args: string[]) => Promise<string>; intervalMs?: number; log?: (msg: string) => void; onConnect?: (serial: string) => void; other?: OtherAdb; now?: () => number; onAdbFailed?: () => string | undefined; onAdbWorks?: () => void } = {}) {
     this.run = opts.run ?? ((args) => new Promise((res, rej) => execFile(this.adbBin, args, { timeout: 5000 }, (e, out) => (e ? rej(e) : res(out)))));
     this.intervalMs = opts.intervalMs ?? 3000;
     this.log = opts.log ?? ((m) => console.log(m));
     this.onConnect = opts.onConnect;
     this.other = opts.other;
     this.now = opts.now ?? Date.now;
+    this.onAdbFailed = opts.onAdbFailed;
+    this.onAdbWorks = opts.onAdbWorks;
   }
   private intervalMs: number;
 
   private running = false;
   /** adb itself could not run last tick (wrong path, not installed); logged once, not every 3 s. */
   private adbFailing = false;
+  /** Routes logged in this stretch of failures, so one that keeps failing is not logged every pass. */
+  private moves = new Set<string>();
   /** When this stretch of "no device" began, and whether the other adb was asked about it (once per stretch). */
   private noDeviceSince?: number;
   private otherAsked = false;
@@ -44,8 +51,16 @@ export class AdbReverse {
       catch (e) {
         if (!this.adbFailing) this.log(`clayclaude: cannot run adb (${this.adbBin}): ${e instanceof Error ? e.message : String(e)}`);
         this.adbFailing = true;
+        // ENOENT: there is no adb at that path, so no other route reaches it.
+        const moved = (e as NodeJS.ErrnoException).code === 'ENOENT' ? undefined : this.onAdbFailed?.();
+        if (moved && !this.moves.has(moved)) { this.moves.add(moved); this.log(`clayclaude: adb failed, trying the WSL interop socket ${moved}`); }
         await this.noDevice();
         return 'no-device';
+      }
+      if (this.adbFailing) {
+        this.onAdbWorks?.();
+        if (this.moves.size) this.log('clayclaude: adb is back');
+        this.moves.clear();
       }
       this.adbFailing = false;
       const serials = deviceSerials(devices);

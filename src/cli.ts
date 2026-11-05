@@ -12,8 +12,9 @@ import { UsagePoller } from './usage.js';
 import { startServer } from './server.js';
 import { FocusBus } from './focus-bus.js';
 import { AdbReverse } from './adb.js';
+import { InteropPicker } from './wsl-interop.js';
 import { daemonAdb } from './adbpick.js';
-import { KioskLauncher, createKioskRoute, kioskWants } from './kiosk.js';
+import { KioskLauncher, createKioskRoute, hostCurl, kioskWants } from './kiosk.js';
 import { TabletSleep, createScreenRoute } from './tablet-sleep.js';
 import { dispatch, USAGE } from './commands/index.js';
 import { createClayRoutes } from './clay/routes.js';
@@ -94,8 +95,11 @@ const handlers = [createKioskRoute(() => kiosk), createScreenRoute(() => sleeper
 const srv = await startServer({ cfg, collector, usage, webRoot, handlers, names, focus }).catch(startFailed);
 kiosk = cfg.tablet.kiosk ? new KioskLauncher({ adbBin: cfg.tablet.adb, port: srv.port, chromePackage: cfg.tablet.chromePackage }) : undefined;
 const adbCheck = daemonAdb(cfg.tablet.adb);   // one adb server only: the daemon runs its configured adb and never another
+const interop = hostCurl(cfg.tablet.adb) ? new InteropPicker() : undefined;   // hostCurl: a Windows adb under WSL
 const adb = new AdbReverse(cfg.tablet.adb, srv.port, {
   other: adbCheck.other,
+  onAdbFailed: () => interop?.next(),
+  onAdbWorks: () => interop?.reset(),
   onConnect: (serial) => {
     if (!kioskWants(cfg.tablet.serial, serial)) return;
     tablet = serial;
