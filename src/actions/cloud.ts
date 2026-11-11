@@ -25,7 +25,8 @@ type CloudAnswer =
   | { kind: 'choice'; requestId: string; fromId: string | null; label: string }
   | { kind: 'text'; text: string };
 
-const ANSWER_BUDGET_MS = 12_000;
+/** Room for the answer's three API calls (session, pending request, post) at the probe's 8 s HTTP timeout each. */
+export const ANSWER_BUDGET_MS = 25_000;
 const UNSUPPORTED_ASK = 'This question has several parts or lets you pick more than one. Answer it on claude.ai.';
 /** The longest permission detail shown; the probe sends inputs up to the same size (CLOUD_INPUT_MAX), plus labels. */
 export const CLOUD_DETAIL_MAX = 10_000;

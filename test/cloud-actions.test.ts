@@ -140,7 +140,7 @@ describe('cloud actions', () => {
     const out = await cloudAnswer(r.d, r.S(PENDING.id), { sessionId: r.S(PENDING.id).key, promptHash: rp.prompt.hash, choice: '2' });
     expect(out).toEqual({ ok: true, sent: 'Blue' });
     expect(r.calls).toHaveLength(1);
-    expect(r.calls[0]).toMatchObject({ host: 'local', req: { mode: 'cloud-answer', configDir: '/c/a', sessionId: PENDING.id, budgetMs: 12000,
+    expect(r.calls[0]).toMatchObject({ host: 'local', req: { mode: 'cloud-answer', configDir: '/c/a', sessionId: PENDING.id, budgetMs: 25000,
       answer: { kind: 'choice', label: 'Blue', requestId: REQ_ID, fromId: PREV_ID } } });
     expect(r.poke).toHaveBeenCalledWith(PENDING.id);
   });

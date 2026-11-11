@@ -23,7 +23,7 @@ import { createActionService } from './actions/service.js';
 import { PendingLaunches } from './actions/pending.js';
 import { makeExec } from './actions/exec.js';
 import { createActionRoutes } from './actions/routes.js';
-import { runProbe } from './probe/run.js';
+import { probeTimeoutFor, runProbe } from './probe/run.js';
 import { killChildren } from './children.js';
 import { unsupportedPlatformWarning } from './actions/platform.js';
 import { buildReport } from './build-info.js';
@@ -81,7 +81,7 @@ const startFailed = (e: any) => fail(e?.code === 'EADDRINUSE' ? `port ${cfg.port
   : `cannot start the server on port ${cfg.port}: ${e instanceof Error ? e.message : String(e)}`);
 const focus = new FocusBus();
 const actions = createActionService({
-  cfg, sessions: () => collector.sessions(), probe: (h, r) => runProbe(h, r, { timeoutMs: 15_000 }), cloud,
+  cfg, sessions: () => collector.sessions(), probe: (h, r) => runProbe(h, r, { timeoutMs: probeTimeoutFor(r) }), cloud,
   clear: { store: dismissed, files: (k) => collector.registryFiles(k), changed: () => collector.refilter() }, names,
   pending: { store: pending, changed: () => collector.refilter() },
   statePath: join(dirname(configPath), 'state.json'),   // each account's model list for + New (Task 46)

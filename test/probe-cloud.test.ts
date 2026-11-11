@@ -428,3 +428,27 @@ describe('probe cloud shares its budget across logins', () => {
     expect(b.sessions.some((x: any) => x.events)).toBe(true);
   }, 30_000);
 });
+
+describe('cloud-answer has room for slow reads', () => {
+  it('still posts after a 3 s session lookup and a 3 s pending-request lookup, at the daemon budget', async () => {
+    const { ANSWER_BUDGET_MS } = await import('../src/actions/cloud.js');
+    const s = await serve({ list: [], single: { [ASK_ID]: askItem() }, events: { [ASK_ID]: PENDING }, singleDelayMs: 3000, eventsDelayMs: 3000 });
+    const prev = PENDING[PENDING.length - 1];
+    const fromId = PENDING[PENDING.findIndex((e: any) => e.request_id === RID) - 1].uuid;
+    const { out } = await probe(s.url, { mode: 'cloud-answer', budgetMs: ANSWER_BUDGET_MS, configDir: acct(), sessionId: ASK_ID,
+      answer: { kind: 'choice', requestId: RID, fromId, label: 'Blue' } });
+    expect(prev).toBeTruthy();
+    expect(out).toEqual({ ok: true, sent: 'choice' });
+    expect(s.calls.filter((c) => c.method === 'POST')).toHaveLength(1);
+  }, 40_000);
+});
+
+describe('probeTimeoutFor', async () => {
+  const { probeTimeoutFor } = await import('../src/probe/run.js');
+  it('gives a probe its budget plus ssh start-up, never less than the floor', () => {
+    expect(probeTimeoutFor({ budgetMs: 25_000 })).toBe(33_000);
+    expect(probeTimeoutFor({ budgetMs: 2_000 })).toBe(15_000);
+    expect(probeTimeoutFor({ mode: 'pane' })).toBe(15_000);
+    expect(probeTimeoutFor({ budgetMs: 'x' })).toBe(15_000);
+  });
+});

@@ -19,6 +19,8 @@ export interface CloudStubOpts {
   post?: (sid: string, body: any) => number;
   /** Delay every GET of an events page by this many ms (a slow API). */
   eventsDelayMs?: number;
+  /** Delay every GET of a single session by this many ms. */
+  singleDelayMs?: number;
 }
 
 /** An in-process stand-in for the sessions API (list, single, events, POST events). */
@@ -69,7 +71,9 @@ export async function startCloudStub(o: CloudStubOpts): Promise<CloudStub> {
         return reply();
       }
       const one = o.single?.[sid] ?? o.list.find((x: any) => x.id === sid);
-      return one ? send(200, one) : send(404, { error: 'not found' });
+      const reply1 = () => (one ? send(200, one) : send(404, { error: 'not found' }));
+      if (o.singleDelayMs) { setTimeout(reply1, o.singleDelayMs); return; }
+      return reply1();
     });
   });
   await new Promise<void>((r) => srv.listen(0, '127.0.0.1', r));
