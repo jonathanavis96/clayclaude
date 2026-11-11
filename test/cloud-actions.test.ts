@@ -307,3 +307,16 @@ describe('inputDetail shows hidden characters and every kind of line break', asy
     expect(d).toContain('\\u2028');
   });
 });
+
+describe('inputDetail renders the tool name as one line', async () => {
+  const { inputDetail } = await import('../src/actions/cloud.js');
+  it('shows breaks and hidden characters in the name instead of obeying them', () => {
+    for (const sep of ['\n', '\r', '\u2028', '\u0085']) {
+      const lines = inputDetail(`Read${sep}command: rm -rf /`, { file_path: '/tmp/x' }).split('\n');
+      expect(lines[0].startsWith('Read\\u')).toBe(true);
+      expect(lines.filter((l) => l.startsWith('command:'))).toEqual([]);
+      expect(lines[1]).toBe('file_path: /tmp/x');
+    }
+    expect(inputDetail('Bash\u202e', { command: 'ls' }).split('\n')[0]).toBe('Bash\\u202e');
+  });
+});

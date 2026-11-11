@@ -41,7 +41,9 @@ const BREAKS = /\r\n|[\r\n\v\f\u0085\u2028\u2029]/g;
 const HIDDEN = /[\u0000-\u0008\u000e-\u001f\u007f-\u009f\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g;
 /** A line as it is shown: hidden characters made visible, so nothing in it can reorder or hide its text. */
 export const visible = (line: string): string => line.replace(HIDDEN, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
-const plainKey = (k: string): string => (/^[A-Za-z0-9_.-]+$/.test(k) ? k : visible(JSON.stringify(k)).replace(BREAKS, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0')));
+/** A one-line label (a key, the tool's name): hidden characters and line breaks both shown as \uXXXX. */
+const oneLine = (t: string): string => visible(t).replace(BREAKS, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+const plainKey = (k: string): string => (/^[A-Za-z0-9_.-]+$/.test(k) ? k : oneLine(JSON.stringify(k)));
 
 /**
  * A tool input as the person reads it: the tool's name, then every field, each value whole. The fields a tool acts on
@@ -51,7 +53,8 @@ const plainKey = (k: string): string => (/^[A-Za-z0-9_.-]+$/.test(k) ? k : visib
  */
 export function inputDetail(name: string, input: unknown): string {
   const block = (text: string) => text.split(BREAK).map((l) => CONT + visible(l)).join('\n');
-  if (!input || typeof input !== 'object' || Array.isArray(input)) return `${name}\n${block(JSON.stringify(input ?? null, null, 2))}`;
+  const head = oneLine(String(name));
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return `${head}\n${block(JSON.stringify(input ?? null, null, 2))}`;
   const entries = Object.entries(input as Record<string, unknown>);
   const rank = (k: string) => { const i = FIRST_KEYS.indexOf(k); return i < 0 ? FIRST_KEYS.length : i; };
   const ordered = entries.map((e, i) => ({ e, i })).sort((a, b) => rank(a.e[0]) - rank(b.e[0]) || a.i - b.i).map((x) => x.e);
@@ -60,7 +63,7 @@ export function inputDetail(name: string, input: unknown): string {
     const text = typeof v === 'string' ? v : JSON.stringify(v, null, 2) ?? String(v);
     return typeof v === 'string' && !BREAK.test(text) ? `${key}: ${visible(text)}` : `${key}:\n${block(text)}`;
   });
-  return [name, ...rows].join('\n');
+  return [head, ...rows].join('\n');
 }
 
 /** The request's input cannot be shown whole, so it cannot be approved here. */
