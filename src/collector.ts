@@ -54,8 +54,10 @@ export class Collector extends EventEmitter {
 
   /** Launches Claude has not registered yet (Task 40): listed after the registered sessions, refreshed on each poll. */
   private pending?: Pick<PendingLaunches, 'refresh' | 'sessions'>;
+  /** Sessions another source keeps (cloud sessions: src/cloud/poller.ts), listed last. */
+  private extra: () => Session[];
 
-  constructor(private cfg: Config, opts: { probe?: ProbeFn; now?: () => number; exhausted?: (a: string) => boolean; log?: (msg: string) => void; hidden?: (key: string) => boolean; resumed?: (key: string) => void; pending?: Pick<PendingLaunches, 'refresh' | 'sessions'> } = {}) {
+  constructor(private cfg: Config, opts: { probe?: ProbeFn; now?: () => number; exhausted?: (a: string) => boolean; log?: (msg: string) => void; hidden?: (key: string) => boolean; resumed?: (key: string) => void; pending?: Pick<PendingLaunches, 'refresh' | 'sessions'>; extra?: () => Session[] } = {}) {
     super();
     this.log = opts.log ?? ((m) => console.warn(m));
     this.probe = opts.probe ?? ((h, r) => runProbe(h, r));
@@ -64,9 +66,10 @@ export class Collector extends EventEmitter {
     this.hidden = opts.hidden ?? (() => false);
     this.resumed = opts.resumed ?? (() => {});
     this.pending = opts.pending;
+    this.extra = opts.extra ?? (() => []);
   }
 
-  sessions(): Session[] { return [...this.registered(), ...(this.pending?.sessions() ?? [])]; }
+  sessions(): Session[] { return [...this.registered(), ...(this.pending?.sessions() ?? []), ...this.extra()]; }
   private registered(): Session[] { return [...this.byHost.values()].flat(); }
 
   /** The registry files (names inside `<configDir>/sessions/`) a session key came from in the last snapshot. */
@@ -78,7 +81,7 @@ export class Collector extends EventEmitter {
   /** Drop newly hidden sessions now, without waiting for the next poll. */
   refilter() {
     for (const [h, list] of this.byHost) this.byHost.set(h, list.filter((s) => s.live || !this.hidden(s.key)));
-    this.emitIfChanged();
+    this.notify();
   }
 
   async pollOnce(): Promise<Session[]> {
@@ -87,10 +90,11 @@ export class Collector extends EventEmitter {
       try { await this.pending.refresh(this.registered()); }
       catch (e) { this.log(`clayclaude: reading launched panes failed: ${e instanceof Error ? e.message : String(e)}`); }
     }
-    return this.emitIfChanged();
+    return this.notify();
   }
 
-  private emitIfChanged(): Session[] {
+  /** Emit 'update' if the list changed since the last emit (lastSeen ignored); an extra source calls it when it changes. */
+  notify(): Session[] {
     const list = this.sessions();
     const json = JSON.stringify(list, withoutLastSeen);
     if (json !== this.lastJson) { this.lastJson = json; this.emit('update', list); }

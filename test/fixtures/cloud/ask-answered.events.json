@@ -1,0 +1,398 @@
+{
+ "_note": "Sanitised from a throwaway cloud session (2026-11-11 answer spike): thinking, signatures, telemetry and the initialize payload removed; session id replaced. Shapes are as the API sent them.",
+ "data": [
+  {
+   "created_at": "2026-11-11T10:58:39.618276Z",
+   "request": {
+    "mode": "auto",
+    "subtype": "set_permission_mode"
+   },
+   "request_id": "set-mode-1e513bee-43b0-45d1-b927-3c2655954f9a",
+   "type": "control_request",
+   "uuid": "93880ca0-906b-4283-90fe-7ad53e276d5d"
+  },
+  {
+   "type": "user",
+   "uuid": "07db0a69-8ba8-4ef3-9246-775ada536d79",
+   "created_at": "2026-11-11T10:58:39.627253Z",
+   "session_id": "session_01FixtureAskAnswered",
+   "parent_tool_use_id": null,
+   "message": {
+    "content": "This is a test of answering a cloud session from outside. Do exactly this and nothing else:\n1. Use the AskUserQuestion tool once: question \"Pick a colour for the test\", header \"Colour\", options \"Red\" and \"Blue\".\n2. Reply with one line: \"CHOSEN: <the colour>\".\n3. Then stop and wait. When a later message arrives, reply with one line: \"GOT: <the message text>\".\nDo not edit or commit any files.",
+    "role": "user"
+   }
+  },
+  {
+   "type": "system",
+   "subtype": "turn_handoff_available",
+   "uuid": "3723b8fc-8f95-412b-853b-2ba598f036f3",
+   "created_at": "2026-11-11T10:58:41.240236Z"
+  },
+  {
+   "created_at": "2026-11-11T10:58:41.310766Z",
+   "response": {
+    "request_id": "set-mode-1e513bee-43b0-45d1-b927-3c2655954f9a",
+    "response": {
+     "mode": "auto"
+    },
+    "subtype": "success"
+   },
+   "type": "control_response",
+   "uuid": "d4d084c0-4f8c-4e30-be5b-c6e99b94ec80"
+  },
+  {
+   "type": "system",
+   "subtype": "init",
+   "uuid": "d63f5ee9-a28c-4cc1-8f92-433d5a5d71ae",
+   "created_at": "2026-11-11T10:58:41.642665Z"
+  },
+  {
+   "type": "assistant",
+   "uuid": "4758f8cd-8624-4e3e-a325-a111c9c53f84",
+   "created_at": "2026-11-11T10:58:43.189113Z",
+   "timestamp": "2026-11-11T10:58:43.093Z",
+   "session_id": "session_01FixtureAskAnswered",
+   "parent_tool_use_id": null,
+   "message": {
+    "id": "msg_fixture",
+    "role": "assistant",
+    "model": "claude-opus-5-5",
+    "type": "message",
+    "stop_reason": null,
+    "content": [
+     {
+      "caller": {
+       "type": "direct"
+      },
+      "id": "toolu_01HmG9CwHfKfHVb3ZxtKR2rP",
+      "input": {
+       "questions": [
+        {
+         "header": "Colour",
+         "multiSelect": false,
+         "options": [
+          {
+           "description": "Choose red",
+           "label": "Red"
+          },
+          {
+           "description": "Choose blue",
+           "label": "Blue"
+          }
+         ],
+         "question": "Pick a colour for the test"
+        }
+       ]
+      },
+      "name": "AskUserQuestion",
+      "type": "tool_use"
+     }
+    ],
+    "usage": {
+     "input_tokens": 2,
+     "cache_read_input_tokens": 61569,
+     "cache_creation_input_tokens": 12486,
+     "output_tokens": 24
+    }
+   }
+  },
+  {
+   "created_at": "2026-11-11T10:58:43.189113Z",
+   "request": {
+    "analytics_tool_name": "AskUserQuestion",
+    "display_name": "AskUserQuestion",
+    "input": {
+     "questions": [
+      {
+       "header": "Colour",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "Choose red",
+         "label": "Red"
+        },
+        {
+         "description": "Choose blue",
+         "label": "Blue"
+        }
+       ],
+       "question": "Pick a colour for the test"
+      }
+     ]
+    },
+    "requires_user_interaction": true,
+    "subtype": "can_use_tool",
+    "tool_name": "AskUserQuestion",
+    "tool_use_id": "toolu_01HmG9CwHfKfHVb3ZxtKR2rP"
+   },
+   "request_id": "fb19b28a-0f4d-4870-a322-09bc2c25a699",
+   "type": "control_request",
+   "uuid": "8185a837-a3d1-48b6-bf53-9ab2778b9d27"
+  },
+  {
+   "created_at": "2026-11-11T10:58:49.943552Z",
+   "response": {
+    "request_id": "fb19b28a-0f4d-4870-a322-09bc2c25a699",
+    "response": {
+     "behavior": "allow",
+     "toolUseID": "toolu_01HmG9CwHfKfHVb3ZxtKR2rP",
+     "tool_name": "AskUserQuestion",
+     "updatedInput": {
+      "answers": {
+       "Pick a colour for the test": "Blue"
+      },
+      "questions": [
+       {
+        "header": "Colour",
+        "multiSelect": false,
+        "options": [
+         {
+          "description": "Choose red",
+          "label": "Red"
+         },
+         {
+          "description": "Choose blue",
+          "label": "Blue"
+         }
+        ],
+        "question": "Pick a colour for the test"
+       }
+      ]
+     }
+    },
+    "subtype": "success"
+   },
+   "type": "control_response",
+   "uuid": "5af154c8-ed04-4be5-9947-a57778fd8a24"
+  },
+  {
+   "type": "user",
+   "uuid": "1cf8be8a-204f-48eb-9ad4-2cd5bde94acc",
+   "created_at": "2026-11-11T10:58:50.075455Z",
+   "session_id": "session_01FixtureAskAnswered",
+   "parent_tool_use_id": null,
+   "message": {
+    "content": [
+     {
+      "content": "Your questions have been answered: \"Pick a colour for the test\"=\"Blue\". You can now continue with these answers in mind.",
+      "tool_use_id": "toolu_01HmG9CwHfKfHVb3ZxtKR2rP",
+      "type": "tool_result"
+     }
+    ],
+    "role": "user"
+   }
+  },
+  {
+   "type": "assistant",
+   "uuid": "f04d8a77-059e-413c-94f5-bbed78c4086d",
+   "created_at": "2026-11-11T10:58:50.794677Z",
+   "timestamp": "2026-11-11T10:58:50.741Z",
+   "session_id": "session_01FixtureAskAnswered",
+   "parent_tool_use_id": null,
+   "message": {
+    "id": "msg_fixture",
+    "role": "assistant",
+    "model": "claude-opus-5-5",
+    "type": "message",
+    "stop_reason": null,
+    "content": [
+     {
+      "text": "CHOSEN: Blue",
+      "type": "text"
+     }
+    ],
+    "usage": {
+     "input_tokens": 2,
+     "cache_read_input_tokens": 74055,
+     "cache_creation_input_tokens": 173,
+     "output_tokens": 12
+    }
+   }
+  },
+  {
+   "type": "result",
+   "subtype": "success",
+   "uuid": "c750023d-1a2a-4592-a8f2-e7748ef67492",
+   "created_at": "2026-11-11T10:58:53.763015Z",
+   "is_error": false,
+   "num_turns": 2,
+   "result": "CHOSEN: Blue",
+   "stop_reason": "end_turn",
+   "session_id": "session_01FixtureAskAnswered"
+  },
+  {
+   "created_at": "2026-11-11T10:58:55.540441Z",
+   "request": {
+    "promptSuggestions": true,
+    "subtype": "initialize"
+   },
+   "request_id": "6236fe1c-2ede-4c1d-b6eb-61bfafc9e667",
+   "type": "control_request",
+   "uuid": "e1588717-14e1-4394-bd40-99da6da47bc0"
+  },
+  {
+   "created_at": "2026-11-11T10:58:55.723874Z",
+   "response": {
+    "subtype": "success",
+    "request_id": "6236fe1c-2ede-4c1d-b6eb-61bfafc9e667",
+    "pending_permission_requests": [],
+    "pending_user_dialog_requests": [],
+    "response": {}
+   },
+   "type": "control_response",
+   "uuid": "43f38879-9eba-42b4-8016-74190079632b"
+  },
+  {
+   "type": "system",
+   "subtype": "background_tasks_changed",
+   "uuid": "6e3bc17d-9265-4605-9081-7eb9d75d34f1",
+   "created_at": "2026-11-11T10:58:55.723874Z"
+  },
+  {
+   "type": "user",
+   "uuid": "52b8665f-80a6-4adf-a0df-e144625ea581",
+   "created_at": "2026-11-11T10:59:00.783364Z",
+   "session_id": "session_01FixtureAskAnswered",
+   "parent_tool_use_id": null,
+   "message": {
+    "content": "hello from the tablet",
+    "role": "user"
+   }
+  },
+  {
+   "type": "system",
+   "subtype": "init",
+   "uuid": "d12bc43c-2c36-4302-a4b2-edeeaa0ce9b3",
+   "created_at": "2026-11-11T10:59:00.884412Z"
+  },
+  {
+   "type": "assistant",
+   "uuid": "a0b36d57-9808-43ea-a2c2-afa43f6dfa93",
+   "created_at": "2026-11-11T10:59:02.302866Z",
+   "timestamp": "2026-11-11T10:59:02.194Z",
+   "session_id": "session_01FixtureAskAnswered",
+   "parent_tool_use_id": null,
+   "message": {
+    "id": "msg_fixture",
+    "role": "assistant",
+    "model": "claude-opus-5-5",
+    "type": "message",
+    "stop_reason": null,
+    "content": [],
+    "usage": {
+     "input_tokens": 4,
+     "cache_read_input_tokens": 74240,
+     "cache_creation_input_tokens": 178,
+     "output_tokens": 4
+    }
+   }
+  },
+  {
+   "type": "assistant",
+   "uuid": "19e3840a-fe18-4615-a554-d62052725b22",
+   "created_at": "2026-11-11T10:59:02.513477Z",
+   "timestamp": "2026-11-11T10:59:02.464Z",
+   "session_id": "session_01FixtureAskAnswered",
+   "parent_tool_use_id": null,
+   "message": {
+    "id": "msg_fixture",
+    "role": "assistant",
+    "model": "claude-opus-5-5",
+    "type": "message",
+    "stop_reason": null,
+    "content": [
+     {
+      "text": "GOT: hello from the tablet",
+      "type": "text"
+     }
+    ],
+    "usage": {
+     "input_tokens": 4,
+     "cache_read_input_tokens": 74240,
+     "cache_creation_input_tokens": 178,
+     "output_tokens": 4
+    }
+   }
+  },
+  {
+   "type": "result",
+   "subtype": "success",
+   "uuid": "cbcd7966-bc73-4735-8b5a-b79acc49c68b",
+   "created_at": "2026-11-11T10:59:05.192147Z",
+   "is_error": false,
+   "num_turns": 1,
+   "result": "GOT: hello from the tablet",
+   "stop_reason": "end_turn",
+   "session_id": "session_01FixtureAskAnswered"
+  },
+  {
+   "created_at": "2026-11-11T10:59:05.367146Z",
+   "request": {
+    "promptSuggestions": true,
+    "subtype": "initialize"
+   },
+   "request_id": "e3a5e6ce-da20-4361-843f-09314bf6137b",
+   "type": "control_request",
+   "uuid": "01402dde-3314-4fff-b400-66b190e5257a"
+  },
+  {
+   "created_at": "2026-11-11T10:59:05.524883Z",
+   "response": {
+    "subtype": "success",
+    "request_id": "e3a5e6ce-da20-4361-843f-09314bf6137b",
+    "pending_permission_requests": [],
+    "pending_user_dialog_requests": [],
+    "response": {}
+   },
+   "type": "control_response",
+   "uuid": "bd1a7748-f6ab-4e66-9c24-42661dcc35ed"
+  },
+  {
+   "type": "system",
+   "subtype": "background_tasks_changed",
+   "uuid": "7e40004a-bcfd-49c8-ab73-1baa97913faf",
+   "created_at": "2026-11-11T10:59:05.592344Z"
+  },
+  {
+   "created_at": "2026-11-11T10:59:10.639673Z",
+   "request": {
+    "promptSuggestions": true,
+    "subtype": "initialize"
+   },
+   "request_id": "4cfb011e-6a67-461e-b5e1-587e3070088b",
+   "type": "control_request",
+   "uuid": "4402f5ad-36a9-44b0-8898-033798850c3b"
+  },
+  {
+   "created_at": "2026-11-11T10:59:10.764157Z",
+   "response": {
+    "subtype": "success",
+    "request_id": "4cfb011e-6a67-461e-b5e1-587e3070088b",
+    "pending_permission_requests": [],
+    "pending_user_dialog_requests": [],
+    "response": {}
+   },
+   "type": "control_response",
+   "uuid": "70b78df8-5d98-4d2d-9702-0117ff06c25b"
+  },
+  {
+   "type": "system",
+   "subtype": "background_tasks_changed",
+   "uuid": "f53a9ad9-9f18-4441-a50c-d870aca1d842",
+   "created_at": "2026-11-11T10:59:10.831410Z"
+  },
+  {
+   "created_at": "2026-11-11T10:59:11.069397Z",
+   "request": {
+    "reason": "archived",
+    "subtype": "end_session"
+   },
+   "request_id": "req_011Cgw2K9SAvTtnj5JCU3vEQ",
+   "type": "control_request",
+   "uuid": "10bb3db2-9b62-4392-a6f7-137faf727564"
+  }
+ ],
+ "has_more": false,
+ "first_id": "93880ca0-906b-4283-90fe-7ad53e276d5d",
+ "last_id": "10bb3db2-9b62-4392-a6f7-137faf727564"
+}

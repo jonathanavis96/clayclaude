@@ -129,8 +129,8 @@ describe('tools/mb-strip-trailers.sh', () => {
 describe('tools/merge-branch.sh strips the trailers', () => {
   const src = readFileSync(join(TOOLS, 'merge-branch.sh'), 'utf8');
   it('runs the strip after the rebase and before the checks and the merge', () => {
-    const rebase = src.indexOf('rebase -q build');
-    const strip = src.indexOf('"$wt/tools/mb-strip-trailers.sh" "$wt" build');
+    const rebase = src.indexOf('rebase -q "$land"');
+    const strip = src.indexOf('"$wt/tools/mb-strip-trailers.sh" "$wt" "$land"');
     const checks = src.indexOf('"$wt/tools/mb-select.sh" "$wt"');
     const merge = src.indexOf('merge --no-ff');
     expect(rebase).toBeGreaterThan(-1);

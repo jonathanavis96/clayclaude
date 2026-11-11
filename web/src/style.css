@@ -184,6 +184,10 @@ html, body { height: 100%; background: var(--bg); color: var(--ink); font: 16px/
 /* A long-press on a name opens the rename sheet (Task 41): no text selection or callout under the finger. */
 .row .name, .gcard .name { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .meta { font: 12px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A cloud session (src/cloud/): a cloud glyph before its name, no DOM change, so rename gestures and tooltips stay. The
+   grid card's origin line is a .meta like the row's. */
+.cloud .name::before { content: "\2601\FE0E\00a0"; opacity: .75; }
+.gcard .meta { min-width: 0; }
 .tag { font: 11px/1.25 var(--mono); color: var(--needs); }
 .action { font: clamp(12px, 2.3vh, 16px) var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .st-needs-you .action { white-space: pre-line; overflow-wrap: anywhere; }

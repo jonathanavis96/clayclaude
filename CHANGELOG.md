@@ -6,7 +6,36 @@ All notable changes to clayclaude are listed here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **A cloud session that has finished its turn is Asleep, not Needs you.** Only
+  a pending question or permission makes a cloud card Needs you now; the
+  session's `unread` flag no longer counts.
+
+### Fixed
+
+- **A message typed to a cloud session reached it as "Another Claude session
+  sent a message"**, so it treated the text as a peer's request and declined
+  instructions. The probe now sends it the way `claude -p "<msg>" --cloud <id>`
+  does: to `/v1/code/sessions/<id>/events`, wrapped as `{payload}`, with the
+  `anthropic-client-platform` header, and the session takes it as the user's.
+
 ### Added
+
+- **Cloud sessions on the board.** Every live Claude Code cloud session of every
+  configured account gets a card, with a cloud before its name, the usual
+  states and timers (no prompt-cache countdown), its model and context against
+  the session's own window, and where it was started: "from this PC", a host
+  id, or "from claude.ai", read from each host's optional `cloudLaunchLog`.
+  The probe's new `cloud` mode calls the sessions API on the account's own host,
+  so the token never leaves it, and it never refreshes a token. One account is
+  polled per login (every 10 s while a session works or waits, every minute
+  otherwise, with back-off on 429), and a session shared by several accounts
+  shows once. From the tablet a cloud session can be answered (Yes or No on a
+  permission, an option on a single-question AskUserQuestion, or a typed reply
+  after a finished turn) through the new `cloud-answer` mode, which re-reads the
+  session on the host and refuses a question that was already answered. Open
+  goes to `https://claude.ai/code/<id>`. Archived sessions leave the board.
 
 - **Better one-line repo descriptions, and an optional model-written one.**
   `GET /api/repos` `about` is now read, first hit wins, from the `description`

@@ -66,6 +66,8 @@ clayclaude watches every Claude Code session on this machine and on any machine 
 
 Claude Code's transcripts do not record a session's context window. With the optional [status line bridge](#install-and-set-up) the board reads the real one from Claude Code. Without it, set `contextWindows` in the config for models whose sessions run on 1M (see [`example.config.yaml`](example.config.yaml)); otherwise the board assumes 200k until it sees a session go past it. If an account sets `autoCompactWindow` in its settings.json (or `CLAUDE_CODE_AUTO_COMPACT_WINDOW` in the settings' `env`) below the model's window, the board counts against that instead, since that is where Claude Code compacts.
 
+**Cloud sessions.** Claude Code cloud sessions (`claude --cloud`, or one started on claude.ai) of every configured account get a card too, with a small cloud before the name. Its line under the name says where it was started ("from this PC", "from gs", or "from claude.ai" when no machine started it) and its repository. It is **Working** while it runs, **Needs you** only while it waits on a question or a permission, and **Asleep** once it has finished its turn (read or not: a cloud card asks for you only when the session really needs you). A message sent to it from the tablet reaches it as yours, as one typed on claude.ai does. It has no prompt-cache countdown: the API does not say when the cache expires. Archive the session and its card goes. The board asks the sessions API from each account's own host, through the probe, so the account's token never leaves that machine; when several accounts share one login, only one of them is asked, every 10 seconds while a session works or waits and every minute otherwise.
+
 L1, a waving character in each account's colour, marks the accounts in **+ New**.
 
 ## What you can do from the tablet
@@ -97,6 +99,8 @@ L1, a waving character in each account's colour, marks the accounts in **+ New**
 </table>
 
 You can also open a session in Chrome or the Claude desktop app, attach to its tmux pane on the PC, give it a board nickname, and clear stopped sessions.
+
+A cloud session is answered the same way: Yes or No on a permission, an option on a question, or a message once it has finished its turn (its card is then Asleep). The daemon checks again that the question is still waiting before it sends anything, so an answer given on claude.ai a moment earlier is not answered twice. A question with several parts, or one that lets you pick more than one option, is answered on claude.ai: Open, in the focus view or the answer sheet, takes you to the session's page there. A message reaches the session as yours, the same as one typed on claude.ai.
 
 ## How it works
 
@@ -368,6 +372,7 @@ hosts:
     ssh: build-box            # an ssh config alias
     tmuxSession: agents       # where "+ New" creates windows
     repoRoots: [~/code]       # where the launcher looks for repos
+    cloudLaunchLog: ~/private/cloud/sessions.tsv   # optional: see below
 ```
 
 `repoRoots` lists the folders that hold your repositories on that host (`~` is that host's home folder). Setup asks for them, for this machine and for each ssh host, with `~/code` as the default.
@@ -375,6 +380,8 @@ hosts:
 **+ New** offers every git repository (a folder with `.git` inside) one or two levels below a root: so `~/code/app` and `~/code/clients/site`, but nothing deeper and not the root itself. Hidden folders and `node_modules` are skipped, symlinked folders are not followed, and a repository's subfolders are not searched. A root that does not exist is ignored, and the list stops at 400 repositories.
 
 **Repos on the Windows drive.** Under WSL, add the Windows folder by its `/mnt` path as a root, for example `/mnt/c/Users/<you>/source/repos`. It works, but listing and working in it is slower than on the Linux filesystem.
+
+`cloudLaunchLog` is optional. It names a file on that host to which your cloud launcher appends one tab-separated row per cloud session it starts, with the session id (`session_…`) anywhere in the row. A cloud card whose id is in a host's log says it came from that host ("this PC" for this machine); once every log has been read, a card in none of them says "from claude.ai". When a row has a 40-character commit hash, the field before it is shown as the task name. With no `cloudLaunchLog` anywhere, cloud cards show no origin.
 
 Keys, jump hosts and ports stay in your `~/.ssh/config`. A host that stops answering keeps its sessions on the board, greyed and tagged "host offline · last seen N min ago", and is retried with backoff.
 

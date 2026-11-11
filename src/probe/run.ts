@@ -44,6 +44,12 @@ function parseOutput<T>(out: string): T {
   return JSON.parse(lines[lines.length - 1] ?? '') as T;
 }
 
+/** The kill timeout for a probe asked to finish within `budgetMs`: the budget plus 8 s for ssh start-up, at least `floor`. */
+export function probeTimeoutFor(req: object, floor = 15_000): number {
+  const b = (req as { budgetMs?: unknown }).budgetMs;
+  return typeof b === 'number' && Number.isFinite(b) && b > 0 ? Math.max(floor, b + 8_000) : floor;
+}
+
 export function runProbe<T>(host: HostConfig, req: object, opts: { timeoutMs?: number; pythonBin?: string } = {}): Promise<T> {
   const { cmd, args, stdin } = probeCommand(host, req, opts.pythonBin);
   return new Promise((resolve, reject) => {

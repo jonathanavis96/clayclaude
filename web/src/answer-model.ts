@@ -2,6 +2,12 @@ import type { PromptView, Result } from '../../src/actions/types.js';
 import type { Session } from '../../src/types.js';
 
 export const RESPONSE_TIMEOUT_MS = 10_000;
+/**
+ * A cloud session acts on an answer only once its container takes it up, and the board sees that on its next poll of
+ * the sessions API: on 2026-11-11 a tablet answer took over 10 s to show. Its sheet waits this long instead.
+ */
+export const CLOUD_RESPONSE_TIMEOUT_MS = 60_000;
+const timeoutFor = (session: Session | undefined) => (session?.cloud ? CLOUD_RESPONSE_TIMEOUT_MS : RESPONSE_TIMEOUT_MS);
 
 export interface Context { question?: string; lastAssistantText?: string }
 export type Sheet =
@@ -48,7 +54,7 @@ export function afterSend(r: Result<{ sent: string }>, prev: Extract<Sheet, { ph
 export function waitOutcome(s: Waiting, session: Session | undefined, now: number): Sheet | 'done' | 'reread' {
   if (!session || session.state !== 'needs-you') return 'done';
   if (session.question !== s.question || session.stateSince !== s.stateSince) return 'reread';
-  return now - s.since >= RESPONSE_TIMEOUT_MS ? 'reread' : s;
+  return now - s.since >= timeoutFor(session) ? 'reread' : s;
 }
 
 /**
@@ -59,7 +65,7 @@ export function waitOutcome(s: Waiting, session: Session | undefined, now: numbe
 export function afterReread(r: Result<ReadOk>, w: Waiting, session: Session | undefined, now: number): Sheet {
   if (r.ok && r.prompt.kind !== 'none' && r.prompt.hash !== w.hash)
     return { phase: 'ready', prompt: r.prompt, context: { question: r.question, lastAssistantText: r.lastAssistantText }, notice: 'Answered. The session has a new question.' };
-  if (now - w.since >= RESPONSE_TIMEOUT_MS) return { phase: 'noresponse' };
+  if (now - w.since >= timeoutFor(session)) return { phase: 'noresponse' };
   return { ...w, question: session?.question, stateSince: session?.stateSince };
 }
 

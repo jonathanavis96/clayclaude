@@ -36,6 +36,11 @@ export interface PromptView {
    * Claude Code queues it for the model's next pause (answer.ts, the answer race, covers a prompt appearing then).
    */
   busy?: true;
+  /**
+   * cloud permission only: the board could not show the tool's whole input (the host clipped it, or it is over
+   * CLOUD_DETAIL_MAX), so Yes is not offered and an allow is refused; it is approved on claude.ai.
+   */
+  cut?: true;
 }
 
 export type Fail = { ok: false; error: ErrorCode; message: string; prompt?: PromptView };

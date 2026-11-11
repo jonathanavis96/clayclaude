@@ -130,6 +130,14 @@ export interface Session {
    * permission pending and not busy.
    */
   idle?: true;
+  /** A Claude Code cloud session (key `cloud:<id>`, pid 0, no tmux). */
+  cloud?: true;
+  /** Cloud only: where it was started: "this PC", a host id, or "claude.ai". Absent while some launch log is unread, or none is configured. */
+  origin?: string;
+  /** Cloud only: the task name from the launch log row. */
+  originTask?: string;
+  /** Cloud only: owner/name of the session's repository. */
+  repo?: string;
 }
 
 export interface AccountUsage {

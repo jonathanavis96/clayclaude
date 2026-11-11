@@ -1,10 +1,11 @@
 import type { Session } from '../../src/types.js';
 import { esc } from './html.js';
 
-type ActionSession = Pick<Session, 'key' | 'state' | 'tmux' | 'bridgeSessionId' | 'hostOnline' | 'starting'>;
-const canAnswer = (s: ActionSession) => s.state === 'needs-you' && s.hostOnline && !!s.tmux;
-/** Task 43: an idle session in tmux, on a host that is online, that is not still starting. */
-export const canMessage = (s: ActionSession) => s.state === 'asleep' && s.hostOnline && !!s.tmux && !s.starting;
+type ActionSession = Pick<Session, 'key' | 'state' | 'tmux' | 'bridgeSessionId' | 'hostOnline' | 'starting' | 'cloud'>;
+/** A cloud session has no tmux pane: the daemon answers it through the sessions API (src/actions/cloud.ts). */
+export const canAnswer = (s: ActionSession) => s.state === 'needs-you' && s.hostOnline && (!!s.tmux || !!s.cloud);
+/** Task 43: an idle session in tmux (or a cloud session), on a host that is online, that is not still starting. */
+export const canMessage = (s: ActionSession) => s.state === 'asleep' && s.hostOnline && (!!s.tmux || !!s.cloud) && !s.starting;
 
 /**
  * The button under a row's status word. A stopped session gets Clear (spec §5.1, UI round 4): it hides the row and
@@ -17,7 +18,8 @@ export const canMessage = (s: ActionSession) => s.state === 'asleep' && s.hostOn
 export function rowActionsHtml(s: ActionSession): string {
   if (s.state === 'stopped') return `<button class="clear-btn" data-act="clear" data-key="${esc(s.key)}">Clear</button>`;
   if (canMessage(s)) return `<button class="answer-btn" data-act="message" data-key="${esc(s.key)}">Message</button>`;
-  if (s.state !== 'needs-you' || !s.hostOnline || s.tmux) return '';
+  // A cloud row's bubble and Message cover it; its Open lives in the focus view and the answer sheet.
+  if (s.state !== 'needs-you' || !s.hostOnline || s.tmux || s.cloud) return '';
   if (s.bridgeSessionId) return `<button class="answer-btn" data-act="open" data-key="${esc(s.key)}">Open</button>`;
   return '';
 }
