@@ -414,3 +414,17 @@ accounts:
     }
   });
 });
+
+describe('probe cloud shares its budget across logins', () => {
+  it('lists every account before any reads events, so a slow first login cannot starve the next', async () => {
+    const sessions = ['A', 'B', 'C'].map((x) => ({ ...LIST[1], id: id(`Busy${x}`), session_status: 'running', updated_at: `2026-11-11T11:00:0${x.charCodeAt(0) - 64}Z` }));
+    const s = await serve({ list: sessions, events: Object.fromEntries(sessions.map((x) => [x.id, PENDING])), eventsDelayMs: 2000 });
+    const { out } = await probe(s.url, { mode: 'cloud', budgetMs: 12000, accounts: [{ key: 'first', configDir: acct() }, { key: 'second', configDir: acct() }] });
+    const [a, b] = out.accounts;
+    expect(a.ok).toBe(true);
+    expect(b.ok).toBe(true);
+    expect(b.sessions.map((x: any) => x.id).sort()).toEqual(sessions.map((x) => x.id).sort());
+    // Event reads took turns: the second login got at least one before the budget ran out.
+    expect(b.sessions.some((x: any) => x.events)).toBe(true);
+  }, 30_000);
+});

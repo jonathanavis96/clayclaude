@@ -17,6 +17,8 @@ export interface CloudStubOpts {
   retryAfter?: string;
   /** POST /v1/sessions/{id}/events or /v1/code/sessions/{id}/events: the status to answer (default 200). */
   post?: (sid: string, body: any) => number;
+  /** Delay every GET of an events page by this many ms (a slow API). */
+  eventsDelayMs?: number;
 }
 
 /** An in-process stand-in for the sessions API (list, single, events, POST events). */
@@ -61,7 +63,11 @@ export async function startCloudStub(o: CloudStubOpts): Promise<CloudStub> {
       if (req.method === 'POST' && sid && ev) return send(o.post?.(sid, body) ?? 200, {});
       if (req.method !== 'GET') return send(405, {});
       if (!sid) return send(200, page(o.list, 'id', u.searchParams, 100));
-      if (ev) return send(200, page(o.events?.[sid] ?? [], 'uuid', u.searchParams, 1000));
+      if (ev) {
+        const reply = () => send(200, page(o.events?.[sid] ?? [], 'uuid', u.searchParams, 1000));
+        if (o.eventsDelayMs) { setTimeout(reply, o.eventsDelayMs); return; }
+        return reply();
+      }
       const one = o.single?.[sid] ?? o.list.find((x: any) => x.id === sid);
       return one ? send(200, one) : send(404, { error: 'not found' });
     });

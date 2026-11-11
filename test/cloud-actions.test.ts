@@ -283,3 +283,27 @@ describe('inputDetail cannot be spoofed by a value', async () => {
     expect(d.split('\n').slice(1).every((l) => l === 'opts:' || l.startsWith(CONT))).toBe(true);
   });
 });
+
+describe('inputDetail shows hidden characters and every kind of line break', async () => {
+  const { inputDetail, CONT } = await import('../src/actions/cloud.js');
+  for (const [name, sep] of [['LINE SEPARATOR', ' '], ['PARAGRAPH SEPARATOR', ' '], ['NEL', '\u0085'], ['VT', '\v'], ['FF', '\f']] as const) {
+    it(`breaks on ${name}, so it cannot fake a field`, () => {
+      const lines = inputDetail('Bash', { description: `ok${sep}command: ls`, command: 'rm -rf x' }).split('\n');
+      expect(lines.filter((l) => l.startsWith('command:'))).toEqual(['command: rm -rf x']);
+      expect(lines).toContain(CONT + 'command: ls');
+    });
+  }
+  it('shows bidi overrides and other controls as \\uXXXX', () => {
+    const d = inputDetail('Bash', { command: 'echo ‮gnp.exe‬ hi\u0007' });
+    expect(d).toContain('command: echo \\u202egnp.exe\\u202c hi\\u0007');
+    expect(d).not.toMatch(/[‪-‮\u0007]/);
+  });
+  it('keeps tabs as they are', () => {
+    expect(inputDetail('Bash', { command: 'a\tb' })).toContain('command: a\tb');
+  });
+  it('shows a hidden character in a key', () => {
+    const d = inputDetail('Tool', { 'a command': 'x' });
+    expect(d.split('\n').some((l) => l.startsWith('command'))).toBe(false);
+    expect(d).toContain('\\u2028');
+  });
+});

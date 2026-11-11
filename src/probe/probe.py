@@ -1722,7 +1722,10 @@ def cloud(req):
             out["launches"] = []
         except Exception as e:
             out["launchError"] = f"cannot read the launch log ({type(e).__name__})"
-    accounts = []
+    # Two passes, so one busy login cannot starve another sharing this host: first every account lists its
+    # sessions, then event reads take turns across accounts (one session each per turn) until the budget runs out.
+    # A session whose events were not read this time is sent without "events"; the daemon asks again next poll.
+    accounts, work = [], []
     for a in req.get("accounts", []):
         raw = a.get("configDir", "")
         entry = {"key": a.get("key"), "configDir": raw}
@@ -1730,25 +1733,42 @@ def cloud(req):
         try:
             headers, login = _cloud_auth(expand(raw), secrets)
             known = a.get("known") or {}
-            sessions = []
+            sessions, todo = [], []
             for s in _cloud_list(headers, a.get("pages", 1), a.get("also") or []):
                 f = _cloud_fields(s)
                 k = known.get(f["id"]) if isinstance(known.get(f["id"]), dict) else None
                 if k is None or k.get("updatedAt") != f["updatedAt"]:
                     after = k.get("afterId") if k and isinstance(k.get("afterId"), str) and k["afterId"] else None
-                    try:
-                        ev = _cloud_events(headers, f["id"], after)
-                    except TimeoutError:
-                        ev = None
-                    if ev is not None:
-                        f["events"] = ev
+                    todo.append((f, after))
                 sessions.append(f)
             entry.update(ok=True, login=login, sessions=sessions)
+            work.append({"entry": entry, "headers": headers, "secrets": secrets, "todo": todo})
         except Exception as e:  # report, never raise; never echo token values
             for k in ("login", "sessions"):
                 entry.pop(k, None)
             _cloud_error(entry, e, secrets)
         accounts.append(entry)
+    while True:
+        busy = [w for w in work if w["todo"]]
+        if not busy or _left() < HTTP_TIMEOUT:
+            break
+        for w in busy:
+            if not w["todo"]:
+                continue
+            f, after = w["todo"].pop(0)
+            try:
+                ev = _cloud_events(w["headers"], f["id"], after)
+            except TimeoutError:
+                ev = None
+            except Exception as e:  # e.g. a 429: the whole account fails and backs off, as a list failure would
+                for k in ("login", "sessions"):
+                    w["entry"].pop(k, None)
+                w["entry"]["ok"] = False
+                _cloud_error(w["entry"], e, w["secrets"])
+                w["todo"] = []
+                continue
+            if ev is not None:
+                f["events"] = ev
     out["accounts"] = accounts
     return out
 

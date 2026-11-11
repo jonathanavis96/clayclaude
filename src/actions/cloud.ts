@@ -34,7 +34,14 @@ export const CLOUD_DETAIL_MAX = 10_000;
 const FIRST_KEYS = ['command', 'file_path', 'path', 'url', 'notebook_path'];
 /** Every continuation line of a multi-line value carries this prefix, so a value can never pass for another field. */
 export const CONT = '  │ ';
-const plainKey = (k: string): string => (/^[A-Za-z0-9_.-]+$/.test(k) ? k : JSON.stringify(k));
+/** Every character any renderer may treat as a line break: CR LF, CR, LF, VT, FF, NEL, LINE and PARAGRAPH SEPARATOR. */
+const BREAK = /\r\n|[\r\n\v\f\u0085\u2028\u2029]/;
+const BREAKS = /\r\n|[\r\n\v\f\u0085\u2028\u2029]/g;
+/** Control and invisible formatting characters (C0 bar tab, DEL, C1, bidi marks and overrides, BOM), shown as \uXXXX. */
+const HIDDEN = /[\u0000-\u0008\u000e-\u001f\u007f-\u009f\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/g;
+/** A line as it is shown: hidden characters made visible, so nothing in it can reorder or hide its text. */
+export const visible = (line: string): string => line.replace(HIDDEN, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
+const plainKey = (k: string): string => (/^[A-Za-z0-9_.-]+$/.test(k) ? k : visible(JSON.stringify(k)).replace(BREAKS, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0')));
 
 /**
  * A tool input as the person reads it: the tool's name, then every field, each value whole. The fields a tool acts on
@@ -43,7 +50,7 @@ const plainKey = (k: string): string => (/^[A-Za-z0-9_.-]+$/.test(k) ? k : JSON.
  * Pure.
  */
 export function inputDetail(name: string, input: unknown): string {
-  const block = (text: string) => text.split(/\r\n|\r|\n/).map((l) => CONT + l).join('\n');
+  const block = (text: string) => text.split(BREAK).map((l) => CONT + visible(l)).join('\n');
   if (!input || typeof input !== 'object' || Array.isArray(input)) return `${name}\n${block(JSON.stringify(input ?? null, null, 2))}`;
   const entries = Object.entries(input as Record<string, unknown>);
   const rank = (k: string) => { const i = FIRST_KEYS.indexOf(k); return i < 0 ? FIRST_KEYS.length : i; };
@@ -51,7 +58,7 @@ export function inputDetail(name: string, input: unknown): string {
   const rows = ordered.map(([k, v]) => {
     const key = plainKey(k);
     const text = typeof v === 'string' ? v : JSON.stringify(v, null, 2) ?? String(v);
-    return typeof v === 'string' && !/[\r\n]/.test(text) ? `${key}: ${text}` : `${key}:\n${block(text)}`;
+    return typeof v === 'string' && !BREAK.test(text) ? `${key}: ${visible(text)}` : `${key}:\n${block(text)}`;
   });
   return [name, ...rows].join('\n');
 }
