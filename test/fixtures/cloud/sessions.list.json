@@ -1,0 +1,294 @@
+{
+ "_note": "Synthetic, with the key set /v1/sessions returned on 2026-11-11. No archived_at key: an archived session has session_status \"archived\". Ordered newest created first, as the API does.",
+ "data": [
+  {
+   "id": "session_01FixtureRunning",
+   "title": "Running fixture session",
+   "type": "internal_session",
+   "environment_kind": "anthropic_cloud",
+   "environment_id": "env_fixture",
+   "origin": "claude_code_cli",
+   "session_status": "running",
+   "status_bucket": "working",
+   "connection_status": "connected",
+   "unread": false,
+   "created_at": "2026-11-11T08:00:00.000000Z",
+   "updated_at": "2026-11-11T09:30:00.000000Z",
+   "configured_model": "claude-opus-5-5",
+   "session_url": "",
+   "tags": [],
+   "metadata": {},
+   "active_mount_paths": [],
+   "github_access": null,
+   "session_context": {
+    "cwd": "",
+    "model": "claude-opus-5-5",
+    "outcomes": [],
+    "permission_mode": "auto",
+    "sources": [
+     {
+      "type": "git_repository",
+      "url": "https://github.com/example/widgets",
+      "revision": "0000000000000000000000000000000000000000",
+      "sparse_checkout_paths": [],
+      "sparse_checkout_exclude_patterns": []
+     }
+    ]
+   },
+   "external_metadata": {
+    "last_served_model": "claude-opus-5-5",
+    "permission_mode": "auto",
+    "context_usage": {
+     "used_tokens": 215782,
+     "max_tokens": 1000000
+    },
+    "post_turn_summary": {
+     "needs_action": false,
+     "recent_action": "",
+     "status_category": "",
+     "status_detail": ""
+    }
+   }
+  },
+  {
+   "id": "session_01FixtureAsking",
+   "title": "Asking fixture session",
+   "type": "internal_session",
+   "environment_kind": "anthropic_cloud",
+   "environment_id": "env_fixture",
+   "origin": "claude_code_cli",
+   "session_status": "requires_action",
+   "status_bucket": "blocked",
+   "connection_status": "connected",
+   "unread": true,
+   "created_at": "2026-11-11T08:00:00.000000Z",
+   "updated_at": "2026-11-11T09:00:00.000000Z",
+   "configured_model": "claude-opus-5-5",
+   "session_url": "",
+   "tags": [],
+   "metadata": {},
+   "active_mount_paths": [],
+   "github_access": null,
+   "session_context": {
+    "cwd": "",
+    "model": "claude-opus-5-5",
+    "outcomes": [],
+    "permission_mode": "auto",
+    "sources": [
+     {
+      "type": "git_repository",
+      "url": "https://github.com/example/widgets",
+      "revision": "0000000000000000000000000000000000000000",
+      "sparse_checkout_paths": [],
+      "sparse_checkout_exclude_patterns": []
+     }
+    ]
+   },
+   "external_metadata": {
+    "last_served_model": "claude-opus-5-5",
+    "permission_mode": "auto",
+    "context_usage": {
+     "used_tokens": 900000,
+     "max_tokens": 1000000
+    },
+    "post_turn_summary": {
+     "needs_action": false,
+     "recent_action": "",
+     "status_category": "",
+     "status_detail": ""
+    }
+   }
+  },
+  {
+   "id": "session_01FixtureDone",
+   "title": "Finished fixture session",
+   "type": "internal_session",
+   "environment_kind": "anthropic_cloud",
+   "environment_id": "env_fixture",
+   "origin": "claude_code_cli",
+   "session_status": "idle",
+   "status_bucket": "completed",
+   "connection_status": "connected",
+   "unread": true,
+   "created_at": "2026-11-11T08:00:00.000000Z",
+   "updated_at": "2026-11-11T09:00:00.000000Z",
+   "configured_model": "claude-opus-5-5",
+   "session_url": "",
+   "tags": [],
+   "metadata": {},
+   "active_mount_paths": [],
+   "github_access": null,
+   "session_context": {
+    "cwd": "",
+    "model": "claude-opus-5-5",
+    "outcomes": [],
+    "permission_mode": "auto",
+    "sources": []
+   },
+   "external_metadata": {
+    "last_served_model": "claude-opus-5-5",
+    "permission_mode": "auto",
+    "context_usage": {
+     "used_tokens": 215782,
+     "max_tokens": 1000000
+    },
+    "post_turn_summary": {
+     "needs_action": false,
+     "recent_action": "",
+     "status_category": "",
+     "status_detail": ""
+    }
+   }
+  },
+  {
+   "id": "session_01FixtureRead",
+   "title": "Read fixture session",
+   "type": "internal_session",
+   "environment_kind": "anthropic_cloud",
+   "environment_id": "env_fixture",
+   "origin": "claude_code_cli",
+   "session_status": "idle",
+   "status_bucket": "completed",
+   "connection_status": "connected",
+   "unread": false,
+   "created_at": "2026-11-11T08:00:00.000000Z",
+   "updated_at": "2026-11-11T09:00:00.000000Z",
+   "configured_model": "claude-opus-5-5",
+   "session_url": "",
+   "tags": [],
+   "metadata": {},
+   "active_mount_paths": [],
+   "github_access": null,
+   "session_context": {
+    "cwd": "",
+    "model": "claude-opus-5-5",
+    "outcomes": [],
+    "permission_mode": "auto",
+    "sources": [
+     {
+      "type": "git_repository",
+      "url": "https://github.com/example/widgets",
+      "revision": "0000000000000000000000000000000000000000",
+      "sparse_checkout_paths": [],
+      "sparse_checkout_exclude_patterns": []
+     }
+    ]
+   },
+   "external_metadata": {
+    "last_served_model": "claude-opus-5-5",
+    "permission_mode": "auto",
+    "context_usage": {
+     "used_tokens": 215782,
+     "max_tokens": 1000000
+    },
+    "post_turn_summary": {
+     "needs_action": false,
+     "recent_action": "",
+     "status_category": "",
+     "status_detail": ""
+    }
+   }
+  },
+  {
+   "id": "session_01FixtureArchived",
+   "title": "Archived fixture session",
+   "type": "internal_session",
+   "environment_kind": "anthropic_cloud",
+   "environment_id": "env_fixture",
+   "origin": "claude_code_cli",
+   "session_status": "archived",
+   "status_bucket": "completed",
+   "connection_status": "connected",
+   "unread": false,
+   "created_at": "2026-11-11T08:00:00.000000Z",
+   "updated_at": "2026-11-11T09:00:00.000000Z",
+   "configured_model": "claude-opus-5-5",
+   "session_url": "",
+   "tags": [],
+   "metadata": {},
+   "active_mount_paths": [],
+   "github_access": null,
+   "session_context": {
+    "cwd": "",
+    "model": "claude-opus-5-5",
+    "outcomes": [],
+    "permission_mode": "auto",
+    "sources": [
+     {
+      "type": "git_repository",
+      "url": "https://github.com/example/widgets",
+      "revision": "0000000000000000000000000000000000000000",
+      "sparse_checkout_paths": [],
+      "sparse_checkout_exclude_patterns": []
+     }
+    ]
+   },
+   "external_metadata": {
+    "last_served_model": "claude-opus-5-5",
+    "permission_mode": "auto",
+    "context_usage": {
+     "used_tokens": 215782,
+     "max_tokens": 1000000
+    },
+    "post_turn_summary": {
+     "needs_action": false,
+     "recent_action": "",
+     "status_category": "",
+     "status_detail": ""
+    }
+   }
+  },
+  {
+   "id": "session_01FixtureBridge",
+   "title": "A local remote-control session",
+   "type": "internal_session",
+   "environment_kind": "bridge",
+   "environment_id": "env_fixture",
+   "origin": "claude_code_cli",
+   "session_status": "idle",
+   "status_bucket": "completed",
+   "connection_status": "connected",
+   "unread": false,
+   "created_at": "2026-11-11T08:00:00.000000Z",
+   "updated_at": "2026-11-11T09:00:00.000000Z",
+   "configured_model": "claude-opus-5-5",
+   "session_url": "",
+   "tags": [],
+   "metadata": {},
+   "active_mount_paths": [],
+   "github_access": null,
+   "session_context": {
+    "cwd": "",
+    "model": "claude-opus-5-5",
+    "outcomes": [],
+    "permission_mode": "auto",
+    "sources": [
+     {
+      "type": "git_repository",
+      "url": "https://github.com/example/widgets",
+      "revision": "0000000000000000000000000000000000000000",
+      "sparse_checkout_paths": [],
+      "sparse_checkout_exclude_patterns": []
+     }
+    ]
+   },
+   "external_metadata": {
+    "last_served_model": "claude-opus-5-5",
+    "permission_mode": "auto",
+    "context_usage": {
+     "used_tokens": 215782,
+     "max_tokens": 1000000
+    },
+    "post_turn_summary": {
+     "needs_action": false,
+     "recent_action": "",
+     "status_category": "",
+     "status_detail": ""
+    }
+   }
+  }
+ ],
+ "has_more": false,
+ "first_id": "session_01FixtureRunning",
+ "last_id": "session_01FixtureBridge"
+}

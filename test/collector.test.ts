@@ -21,6 +21,23 @@ describe('Collector', () => {
     expect(s.map((x) => x.key).sort()).toEqual(['box:w:b', 'local:me:a']);
   });
 
+  it('lists extra sessions and notify() emits when they change', async () => {
+    let extra = [{ key: 'cloud:session_01X', host: 'local', account: 'me', sessionId: 'session_01X', pid: 0, name: 'X', cwd: '',
+      state: 'working', stateSince: NOW, live: true, overContext: false, hostOnline: true, lastSeen: NOW, cloud: true }] as any[];
+    const c = new Collector(cfg, { now: () => NOW, extra: () => extra, probe: async (h) => h.id === 'local' ? snap('/c/me', [reg('a', true)]) : snap('~/.claude-w', []) });
+    const seen: string[][] = [];
+    c.on('update', (l: { key: string }[]) => seen.push(l.map((s) => s.key)));
+    expect((await c.pollOnce()).map((s) => s.key)).toEqual(['local:me:a', 'cloud:session_01X']);
+    c.notify();
+    expect(seen).toHaveLength(1);
+    extra = [{ ...extra[0], lastSeen: NOW + 5 }];
+    c.notify();
+    expect(seen).toHaveLength(1); // lastSeen alone is not a change
+    extra = [];
+    c.notify();
+    expect(seen.at(-1)).toEqual(['local:me:a']);
+  });
+
   it('keeps an offline host\'s last sessions, greyed, while others update', async () => {
     let boxUp = true;
     const c = new Collector(cfg, { now: () => NOW, probe: async (h) => {

@@ -21,6 +21,9 @@ const sessions = [
   { name: 'pebble-cli', state: 'asleep', contextPct: 22 },
   { name: 'riverbank-etl', state: 'limit', contextPct: 57 },
   { name: 'old-prototype', state: 'stopped', contextPct: 31 },
+  // A cloud card carries an origin line under its name (Task 6 of the cloud-sessions plan): it must ellipsise, not overflow.
+  { name: 'Character number badges and settings cards', state: 'needs-you', question: 'Pick a colour for the test', cloud: true, origin: 'this PC',
+    originTask: 'widgets-character-number-badges-and-settings-cards', repo: 'example/widgets', contextPct: 12 },
 ].map((s, i) => ({ ...base, key: `desk:a:s${i}`, sessionId: `s${i}`, pid: i + 1, ...s }));
 const board = { sessions, usage: [], accounts: [{ id: 'a', label: 'Studio', colour: '#e8b54a', host: 'desk' }], cacheTtlMinutes: 60, serverTime: 0, clockSkew: 0 } as unknown as BoardState;
 
@@ -43,7 +46,8 @@ describe.skipIf(!CHROMIUM)('grid card state line', () => {
         await page.setContent(`<style>${css}</style>${html()}`);
         const cards = await page.evaluate(() => [...document.querySelectorAll('.gcard')].map((c) => {
           const r = (e: Element) => e.getBoundingClientRect().toJSON() as DOMRect;
-          return { key: (c as HTMLElement).dataset.key, card: r(c), word: r(c.querySelector('.gstate .word')!), ctx: r(c.querySelector('.gctx')!) };
+          const meta = c.querySelector('.meta');
+          return { key: (c as HTMLElement).dataset.key, card: r(c), word: r(c.querySelector('.gstate .word')!), ctx: r(c.querySelector('.gctx')!), meta: meta ? r(meta) : null };
         }));
         expect(cards.length).toBe(sessions.length);
         for (const c of cards) {
@@ -51,6 +55,7 @@ describe.skipIf(!CHROMIUM)('grid card state line', () => {
             expect(b.right, `${c.key} ${n} right edge at ${width}x${height}`).toBeLessThanOrEqual(c.card.right + 0.5);
             expect(b.bottom, `${c.key} ${n} bottom at ${width}x${height}`).toBeLessThanOrEqual(c.card.bottom + 0.5);
           }
+          if (c.meta) expect(c.meta.right, `${c.key} origin line right edge at ${width}x${height}`).toBeLessThanOrEqual(c.card.right + 0.5);
           const apart = c.word.right <= c.ctx.left + 0.5 || c.word.bottom <= c.ctx.top + 0.5;
           expect(apart, `${c.key} word and figure overlap at ${width}x${height}`).toBe(true);
         }

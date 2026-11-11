@@ -17,6 +17,8 @@ import { publicConfig } from './public-config.js';
 import { fail, type ActionApi, type Fail, type Result, type SessionSummary } from './types.js';
 import { ActionError, parseTmuxRef, type TmuxRef } from './validate.js';
 import { renameWindow, tmuxNameProblem, windowTarget } from './window-rename.js';
+import { cloudAnswer, cloudMessage, cloudOpenCmd, cloudReadPrompt, type CloudDeps } from './cloud.js';
+import type { CloudPoller } from '../cloud/poller.js';
 
 export interface ServiceDeps {
   cfg: Config;
@@ -38,6 +40,8 @@ export interface ServiceDeps {
   focus?: FocusBus;
   /** Model-written repo descriptions; built from `repoSummaries` in the config when not given (a test passes its own). */
   repoSummaries?: RepoSummaries;
+  /** Cloud sessions (src/cloud/poller.ts): their prompts, answers, messages and summaries go through it. */
+  cloud?: Pick<CloudPoller, 'entry' | 'accountsFor' | 'poke'>;
 }
 
 const toFail = (e: unknown): Fail =>
@@ -69,6 +73,13 @@ export function createActionService(d: ServiceDeps): ActionApi & { publicConfig(
 
   const find = (id: string): Session | Fail => d.sessions().find((s) => s.key === id) ?? fail('unknown_session', 'that session is no longer listed');
   const isFail = (x: Session | Fail): x is Fail => 'ok' in x;
+  /** The listed session, if it is a cloud session (and the cloud deps when they are wired). */
+  const cloudOf = (id: string): { s: Session; c: CloudDeps } | Fail | undefined => {
+    const s = d.sessions().find((x) => x.key === id);
+    if (!s?.cloud) return undefined;
+    if (!d.cloud) return fail('unsupported', 'cloud sessions are not wired in this daemon');
+    return { s, c: { cfg: d.cfg, cloud: d.cloud, probe: d.probe, guard } };
+  };
 
   async function run(cmd: Cmd, done: string): Promise<Result<{ message: string }>> {
     const r = await gui(cmd);
@@ -116,6 +127,7 @@ export function createActionService(d: ServiceDeps): ActionApi & { publicConfig(
         if (isFail(s)) return s;
         const account = d.cfg.accounts.find((a) => a.id === s.account);
         if (!account) return fail('unknown_account', 'unknown account');
+        if (s.cloud) return await run(cloudOpenCmd(d.cfg, env, account, s.sessionId), 'Opened on claude.ai');
         if (account.open.type === 'tmux') return api.attach(id);
         if (!s.bridgeSessionId) return fail('no_bridge', 'This session has no remote-control link. Use Attach tmux.');
         if (account.open.type === 'chrome')
@@ -135,15 +147,27 @@ export function createActionService(d: ServiceDeps): ActionApi & { publicConfig(
       } catch (e) { return toFail(e); }
     },
 
-    readPrompt: (id) => readPrompt({ cfg: d.cfg, sessions: d.sessions, exec, quickReplies: () => d.cfg.ui.quickReplies, lastAssistantText: async (s) => {
+    readPrompt: async (id) => {
+      const c = cloudOf(id);
+      if (c) return 'ok' in c ? c : cloudReadPrompt(c.c, c.s);
+      return readPrompt({ cfg: d.cfg, sessions: d.sessions, exec, quickReplies: () => d.cfg.ui.quickReplies, lastAssistantText: async (s) => {
       const r = await api.summary(s.key);
       return r.ok ? r.summary.lastAssistantText : undefined;
-    } }, id),
+    } }, id);
+    },
 
-    answer: (req) => answer({ cfg: d.cfg, sessions: d.sessions, exec, quickReplies: () => d.cfg.ui.quickReplies, guard }, req),
+    answer: async (req) => {
+      const c = cloudOf(req.sessionId);
+      if (c) return 'ok' in c ? c : cloudAnswer(c.c, c.s, req);
+      return answer({ cfg: d.cfg, sessions: d.sessions, exec, quickReplies: () => d.cfg.ui.quickReplies, guard }, req);
+    },
 
     // Task 43: the same guard as answers, so an answer and a message never go to one pane at once.
-    message: (req) => message({ cfg: d.cfg, sessions: d.sessions, exec, quickReplies: () => d.cfg.ui.quickReplies, guard }, req),
+    message: async (req) => {
+      const c = cloudOf(req.sessionId);
+      if (c) return 'ok' in c ? c : cloudMessage(c.c, c.s, req);
+      return message({ cfg: d.cfg, sessions: d.sessions, exec, quickReplies: () => d.cfg.ui.quickReplies, guard }, req);
+    },
 
     launch: (req) => launch({ cfg: d.cfg, exec, caps, repos, models, attachNew: (host, ref, title) => attachRef({ host: host.id, name: title }, ref, title),
       onStarted: d.pending ? (l) => { d.pending!.store.add(l); d.pending!.changed(); } : undefined }, req),
@@ -161,6 +185,13 @@ export function createActionService(d: ServiceDeps): ActionApi & { publicConfig(
       if (isFail(s)) return s;
       const hit = summaries.get(id);
       if (hit && now() - hit.at < 3000) return { ok: true, summary: hit.value };
+      if (s.cloud) {
+        // The poller already holds the session's recent events: no probe call.
+        const e = d.cloud?.entry(s.sessionId);
+        if (!e) return fail('unknown_session', 'that session is no longer listed');
+        const started = Date.parse(e.raw.createdAt);
+        return { ok: true, summary: buildSummary(e.lines, Number.isFinite(started) ? started : undefined) };
+      }
       const account = d.cfg.accounts.find((a) => a.id === s.account);
       const host = d.cfg.hosts.find((h) => h.id === s.host);
       if (!account || !host) return fail('unknown_account', 'unknown account');
@@ -180,6 +211,7 @@ export function createActionService(d: ServiceDeps): ActionApi & { publicConfig(
     async lastMessage(id) {
       const s = find(id);
       if (isFail(s)) return s;
+      if (s.cloud) return fail('unsupported', 'Not available for cloud sessions yet.');
       const account = d.cfg.accounts.find((a) => a.id === s.account);
       const host = d.cfg.hosts.find((h) => h.id === s.host);
       if (!account || !host) return fail('unknown_account', 'unknown account');

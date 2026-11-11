@@ -3,7 +3,9 @@
 import datetime
 import email.utils
 import glob
+import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -11,6 +13,7 @@ import stat
 import subprocess
 import sys
 import time
+import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -582,6 +585,49 @@ def check_request(req):
         files = req.get("files")
         if not isinstance(files, list) or not all(isinstance(f, str) for f in files) or len(files) > 1000:
             bad_request("files must be a list of strings")
+    elif req.get("mode") == "cloud":
+        accts = req.get("accounts", [])
+        if not isinstance(accts, list) or not all(isinstance(a, dict) for a in accts):
+            bad_request("accounts must be a list of objects")
+        if "launchLog" in req and not isinstance(req["launchLog"], str):
+            bad_request("launchLog must be a string")
+        if "budgetMs" in req and (isinstance(req["budgetMs"], bool) or not isinstance(req["budgetMs"], int) or req["budgetMs"] < 0):
+            bad_request("budgetMs must be a non-negative integer")
+        for a in accts:
+            if not isinstance(a.get("configDir"), str) or not a["configDir"]:
+                bad_request("configDir must be a non-empty string")
+            p = a.get("pages", 1)
+            if isinstance(p, bool) or not isinstance(p, int) or not 1 <= p <= CLOUD_PAGES_MAX:
+                bad_request(f"pages must be an integer from 1 to {CLOUD_PAGES_MAX}")
+            also = a.get("also", [])
+            if not isinstance(also, list) or len(also) > 500 or not all(isinstance(x, str) and CLOUD_SESSION_ID.match(x) for x in also):
+                bad_request("also must be a list of session ids")
+            known = a.get("known", {})
+            if not isinstance(known, dict) or len(known) > 500 or not all(
+                    isinstance(k, str) and isinstance(v, dict)
+                    and all(isinstance(v.get(f), str) for f in ("afterId", "updatedAt") if f in v)
+                    for k, v in known.items()):
+                bad_request("known must map session ids to {afterId, updatedAt}")
+    elif req.get("mode") == "cloud-answer":
+        if not isinstance(req.get("configDir"), str) or not req["configDir"]:
+            bad_request("configDir must be a non-empty string")
+        if not isinstance(req.get("sessionId"), str) or not CLOUD_SESSION_ID.match(req["sessionId"]):
+            bad_request("sessionId must be a session id")
+        if "budgetMs" in req and (isinstance(req["budgetMs"], bool) or not isinstance(req["budgetMs"], int) or req["budgetMs"] < 0):
+            bad_request("budgetMs must be a non-negative integer")
+        ans = req.get("answer")
+        if not isinstance(ans, dict) or ans.get("kind") not in ("allow", "deny", "choice", "text"):
+            bad_request("answer.kind must be allow, deny, choice or text")
+        if ans["kind"] == "text":
+            if not isinstance(ans.get("text"), str) or not 1 <= len(ans["text"]) <= 4000:
+                bad_request("answer.text must be 1-4000 characters")
+        else:
+            if not isinstance(ans.get("requestId"), str) or not 1 <= len(ans["requestId"]) <= 200:
+                bad_request("answer.requestId must be a non-empty string")
+            if ans.get("fromId") is not None and (not isinstance(ans["fromId"], str) or not 1 <= len(ans["fromId"]) <= 200):
+                bad_request("answer.fromId must be a string or null")
+            if ans["kind"] == "choice" and (not isinstance(ans.get("label"), str) or not 1 <= len(ans["label"]) <= 400):
+                bad_request("answer.label must be 1-400 characters")
     elif req.get("mode") in ("usage", "models"):
         accts = req.get("accounts", [])
         if not isinstance(accts, list) or not all(isinstance(a, dict) for a in accts):
@@ -613,6 +659,10 @@ def main():
         out = reap(req)
     elif mode == "models":
         out = models(req)
+    elif mode == "cloud":
+        out = cloud(req)
+    elif mode == "cloud-answer":
+        out = cloud_answer(req)
     else:
         print(f"unknown mode {mode!r}", file=sys.stderr)
         sys.exit(2)
@@ -1353,6 +1403,431 @@ def discover(req):
         out.append({"path": d, "name": name, "sessionFiles": len(sessions), "hasCredentials": has_creds,
                     "hasSettings": os.path.exists(os.path.join(d, "settings.json")), "email": _email(d)})
     return {"ok": True, "home": home, "dirs": out}
+
+
+# --- Claude Code cloud sessions (modes "cloud" and "cloud-answer") ---
+# The sessions API, read with the account's own OAuth token on its own host; only derived, clipped fields leave it.
+# The token is never refreshed here: an expired one is an error
+# and nothing is sent. Every error line goes through _scrub with the token in `secrets`; _open never follows redirects.
+API_URL = os.environ.get("CLAYCLAUDE_API_URL", "https://api.anthropic.com").rstrip("/")
+CLOUD_BETA = "ccr-byoc-2025-07-29"
+CLOUD_PAGES_MAX = 5          # list pages per poll at most (100 sessions each)
+CLOUD_EVENT_PAGES = 3        # event pages per session per poll (1000 events each)
+CLOUD_LINES = 60             # newest transcript lines kept per poll
+CLOUD_CLIP = 400
+CLOUD_SESSION_ID = re.compile(r"session_[A-Za-z0-9]+\Z")
+CLOUD_SESSION_TOKEN = re.compile(r"session_[A-Za-z0-9]+")
+CLOUD_REPO = re.compile(r"^https://github\.com/([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
+CLOUD_BASE = re.compile(r"[0-9a-f]{40}\Z")
+LAUNCH_LOG_TAIL = 256 * 1024
+CLOUD_CLIENT_PLATFORM = "claude_code_sdk"  # what `claude -p --cloud <id>` sends (CLI 2.1.322)
+
+
+class _CloudAuth(Exception):
+    """No usable token: `kind` is "noAuth" (no credentials) or "expired"."""
+
+    def __init__(self, kind, msg):
+        super().__init__(msg)
+        self.kind = kind
+
+
+def _cloud_account(d):
+    """`oauthAccount` from `<configDir>/.claude.json` (or `~/.claude.json` for `~/.claude`): the first with an
+    organizationUuid. Unlike _oauth_account it does not need an email: the org id is what the API wants."""
+    cands = [os.path.join(d, ".claude.json")]
+    if os.path.realpath(d) == os.path.realpath(expand("~/.claude")):
+        cands.append(expand("~/.claude.json"))
+    for p in cands:
+        try:
+            with open(p) as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            continue
+        acct = data.get("oauthAccount") if isinstance(data, dict) else None
+        if isinstance(acct, dict) and isinstance(acct.get("organizationUuid"), str) and acct["organizationUuid"]:
+            return acct
+    return {}
+
+
+def _cloud_token(d, secrets):
+    """The account's access token, never refreshed."""
+    try:
+        with open(os.path.join(d, ".credentials.json")) as f:
+            creds = json.load(f)
+    except FileNotFoundError:
+        raise _CloudAuth("noAuth", "no credentials file") from None
+    oauth = creds.get("claudeAiOauth") if isinstance(creds, dict) else None
+    if not isinstance(oauth, dict):
+        raise _CloudAuth("noAuth", "no claudeAiOauth in the credentials file")
+    _note_secrets(oauth, secrets)
+    exp = oauth.get("expiresAt")
+    if isinstance(exp, (int, float)) and not isinstance(exp, bool) and exp <= time.time() * 1000:
+        raise _CloudAuth("expired", "token expired (refresh is off)")
+    token = oauth.get("accessToken")
+    if not isinstance(token, str) or not token:
+        raise _CloudAuth("noAuth", "no access token in the credentials file")
+    return token
+
+
+def _cloud_headers(token, org):
+    return {"Authorization": f"Bearer {token}", "anthropic-version": "2023-06-01", "anthropic-beta": CLOUD_BETA,
+            "x-organization-uuid": org, "User-Agent": USER_AGENT}
+
+
+def _cloud_get(path, headers):
+    _need(HTTP_TIMEOUT, "read the sessions API")
+    req = urllib.request.Request(API_URL + path, headers=headers)
+    with _open(req, timeout=min(HTTP_TIMEOUT, max(1, _left()))) as r:
+        body = loads(r.read().decode("utf-8", "replace"))
+    if not isinstance(body, dict):
+        raise ValueError("the sessions API answered something other than an object")
+    return body
+
+
+def _cloud_post(path, headers, payload, extra=None):
+    _need(HTTP_TIMEOUT, "post to the sessions API")
+    h = dict(headers)
+    h.update(extra or {})
+    h["content-type"] = "application/json"
+    req = urllib.request.Request(API_URL + path, data=json.dumps(payload).encode(), headers=h, method="POST")
+    with _open(req, timeout=min(HTTP_TIMEOUT, max(1, _left()))) as r:
+        r.read(65536)
+
+
+def _q(**kw):
+    return "?" + urllib.parse.urlencode([("beta", "true")] + [(k, v) for k, v in kw.items() if v is not None])
+
+
+def _live_cloud(s):
+    return isinstance(s, dict) and s.get("environment_kind") == "anthropic_cloud" \
+        and s.get("session_status") != "archived" and isinstance(s.get("id"), str) and CLOUD_SESSION_ID.match(s["id"])
+
+
+def _count_field(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v >= 0
+
+
+def _cloud_fields(s):
+    meta = s.get("external_metadata") if isinstance(s.get("external_metadata"), dict) else {}
+    out = {"id": s["id"], "title": s["title"][:200] if isinstance(s.get("title"), str) else "",
+           "status": s.get("session_status") if isinstance(s.get("session_status"), str) else "",
+           "unread": s.get("unread") is True,
+           "createdAt": s.get("created_at") if isinstance(s.get("created_at"), str) else "",
+           "updatedAt": s.get("updated_at") if isinstance(s.get("updated_at"), str) else ""}
+    model = next((m for m in (meta.get("model"), meta.get("last_served_model"), s.get("configured_model"))
+                  if isinstance(m, str) and m), None)
+    if model:
+        out["model"] = model[:64]
+    if isinstance(meta.get("effort_level"), str) and meta["effort_level"]:
+        out["effort"] = meta["effort_level"][:32]
+    cu = meta.get("context_usage") if isinstance(meta.get("context_usage"), dict) else {}
+    if _count_field(cu.get("used_tokens")) and _count_field(cu.get("max_tokens")):
+        out["contextUsed"], out["contextMax"] = cu["used_tokens"], cu["max_tokens"]
+    ctx = s.get("session_context") if isinstance(s.get("session_context"), dict) else {}
+    src = ctx.get("sources") if isinstance(ctx.get("sources"), list) else []
+    url = src[0].get("url") if src and isinstance(src[0], dict) else None
+    m = CLOUD_REPO.match(url) if isinstance(url, str) else None
+    if m:
+        out["repo"] = f"{m.group(1)}/{m.group(2)}"
+    return out
+
+
+def _cloud_list(headers, pages, also):
+    """Live cloud sessions on the first `pages` list pages, plus each `also` id not on them (one GET each)."""
+    found, seen, after = [], set(), None
+    for _ in range(pages):
+        body = _cloud_get("/v1/sessions" + _q(limit="100", after_id=after), headers)
+        data = body.get("data") if isinstance(body.get("data"), list) else []
+        for s in data:
+            sid = s.get("id") if isinstance(s, dict) else None
+            if isinstance(sid, str):
+                if sid in seen:
+                    continue
+                seen.add(sid)
+            if _live_cloud(s):
+                found.append(s)
+        last = body.get("last_id")
+        if body.get("has_more") is not True or not isinstance(last, str) or not last or last == after:
+            break
+        after = last
+    for sid in also:
+        if sid in seen:
+            continue
+        seen.add(sid)
+        try:
+            s = _cloud_get(f"/v1/sessions/{sid}" + _q(), headers)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                continue
+            raise
+        if _live_cloud(s) and s.get("id") == sid:
+            found.append(s)
+    return found
+
+
+def _cloud_events(headers, sid, after):
+    """New events after `after` (from the start when None), reduced. None when no page could be read in time."""
+    lines, requests, resolved, prev = [], [], [], after
+    last_id, last_result, more, read = after, None, False, 0
+    for page in range(CLOUD_EVENT_PAGES):
+        if _left() < HTTP_TIMEOUT:
+            more = True
+            break
+        try:
+            body = _cloud_get(f"/v1/sessions/{sid}/events" + _q(limit="1000", after_id=last_id), headers)
+        except urllib.error.HTTPError as e:
+            if e.code == 429 or read == 0:
+                raise
+            more = True
+            break
+        read += 1
+        data = body.get("data") if isinstance(body.get("data"), list) else []
+        for e in data:
+            if not isinstance(e, dict):
+                continue
+            t = e.get("type")
+            if t in ("user", "assistant"):
+                e2 = dict(e)
+                if "timestamp" not in e2:
+                    e2["timestamp"] = e2.get("created_at")
+                ln = trim_line(json.dumps(e2), CLOUD_CLIP)
+                if ln:
+                    lines.append(ln)
+            elif t == "control_request":
+                r = e.get("request") if isinstance(e.get("request"), dict) else {}
+                if r.get("subtype") == "can_use_tool" and isinstance(e.get("request_id"), str):
+                    q = {"requestId": e["request_id"][:200], "eventId": e.get("uuid"), "prevId": prev,
+                         "toolName": r["tool_name"][:200] if isinstance(r.get("tool_name"), str) else "",
+                         "input": clip_obj(r.get("input"), CLOUD_CLIP), "createdAt": e.get("created_at")}
+                    if isinstance(r.get("display_name"), str):
+                        q["displayName"] = r["display_name"][:200]
+                    if isinstance(r.get("tool_use_id"), str):
+                        q["toolUseId"] = r["tool_use_id"][:200]
+                    requests.append(q)
+            elif t == "control_response":
+                rid = (e.get("response") or {}).get("request_id") if isinstance(e.get("response"), dict) else None
+                if isinstance(rid, str) and rid[:200] not in resolved:
+                    resolved.append(rid[:200])
+            elif t == "control_cancel_request":
+                rid = e.get("request_id")
+                if isinstance(rid, str) and rid[:200] not in resolved:
+                    resolved.append(rid[:200])
+            elif t == "result" and isinstance(e.get("created_at"), str):
+                last_result = e["created_at"]
+            if isinstance(e.get("uuid"), str):
+                prev = last_id = e["uuid"]
+        if body.get("has_more") is not True or not data:
+            break
+        if page == CLOUD_EVENT_PAGES - 1:
+            more = True
+    if read == 0:
+        return None
+    out = {"lines": lines[-CLOUD_LINES:], "requests": [q for q in requests if q["requestId"] not in resolved],
+           "resolved": resolved, "lastId": last_id, "more": more}
+    if last_result:
+        out["lastResultAt"] = last_result
+    return out
+
+
+def _launches(path):
+    """Session ids in a cloud-build launch log, with the row's task: the field before the 40-hex base, when that is
+    not the first field. Any `session_…` token on a row counts, so older column layouts work too."""
+    found = {}
+    for ln in tail_lines(home_path(path), LAUNCH_LOG_TAIL, strict=True):
+        fields = ln.split("\t")
+        base = next((i for i, f in enumerate(fields) if CLOUD_BASE.match(f.strip())), None)
+        task = fields[base - 1].strip()[:80] if base is not None and base >= 2 else None
+        for sid in CLOUD_SESSION_TOKEN.findall(ln):
+            found.pop(sid, None)  # a later row wins, and sits later in the list
+            found[sid] = {"sessionId": sid, **({"task": task} if task else {})}
+    return list(found.values())
+
+
+def _cloud_error(entry, e, secrets):
+    if isinstance(e, (_CloudAuth, TimeoutError)):
+        msg = str(e)
+    else:
+        msg = f"{type(e).__name__}: {e}"
+    entry.update(ok=False, error=_scrub(msg, secrets)[:200])
+    if isinstance(e, _CloudAuth):
+        entry[e.kind] = True
+    if isinstance(e, urllib.error.HTTPError):
+        entry["status"] = e.code
+        ra = _retry_after(e.headers.get("Retry-After") if e.headers else None)
+        if ra is not None:
+            entry["retryAfterS"] = ra
+
+
+def _set_budget(req):
+    global _deadline
+    budget = req.get("budgetMs")
+    if isinstance(budget, (int, float)) and not isinstance(budget, bool) and budget > 0:
+        _deadline = time.monotonic() + budget / 1000
+
+
+def _cloud_auth(d, secrets):
+    """(headers, login) for a config dir."""
+    token = _cloud_token(d, secrets)
+    acct = _cloud_account(d)
+    org = acct.get("organizationUuid")
+    if not org:
+        raise ValueError("no organizationUuid in .claude.json")
+    login = hashlib.sha256(f"{org}:{acct.get('accountUuid') or ''}".encode()).hexdigest()[:16]
+    return _cloud_headers(token, org), login
+
+
+def cloud(req):
+    _set_budget(req)
+    out = {"ok": True, "nowMs": int(time.time() * 1000)}
+    if isinstance(req.get("launchLog"), str) and req["launchLog"]:
+        try:
+            out["launches"] = _launches(req["launchLog"])
+        except FileNotFoundError:
+            out["launches"] = []
+        except Exception as e:
+            out["launchError"] = f"cannot read the launch log ({type(e).__name__})"
+    accounts = []
+    for a in req.get("accounts", []):
+        raw = a.get("configDir", "")
+        entry = {"key": a.get("key"), "configDir": raw}
+        secrets = set()
+        try:
+            headers, login = _cloud_auth(expand(raw), secrets)
+            known = a.get("known") or {}
+            sessions = []
+            for s in _cloud_list(headers, a.get("pages", 1), a.get("also") or []):
+                f = _cloud_fields(s)
+                k = known.get(f["id"]) if isinstance(known.get(f["id"]), dict) else None
+                if k is None or k.get("updatedAt") != f["updatedAt"]:
+                    after = k.get("afterId") if k and isinstance(k.get("afterId"), str) and k["afterId"] else None
+                    try:
+                        ev = _cloud_events(headers, f["id"], after)
+                    except TimeoutError:
+                        ev = None
+                    if ev is not None:
+                        f["events"] = ev
+                sessions.append(f)
+            entry.update(ok=True, login=login, sessions=sessions)
+        except Exception as e:  # report, never raise; never echo token values
+            for k in ("login", "sessions"):
+                entry.pop(k, None)
+            _cloud_error(entry, e, secrets)
+        accounts.append(entry)
+    out["accounts"] = accounts
+    return out
+
+
+CLOUD_ANSWER_PAGES = 5
+CLOUD_DENY_MESSAGE = "Denied from the clayclaude board."
+
+
+def _cloud_find_request(headers, sid, from_id, rid):
+    """The can_use_tool request `rid` among the events after `from_id`, or None when it is missing, answered,
+    cancelled, or could not be ruled out as answered (more events than CLOUD_ANSWER_PAGES pages)."""
+    found, done, after = None, False, from_id
+    for _ in range(CLOUD_ANSWER_PAGES):
+        body = _cloud_get(f"/v1/sessions/{sid}/events" + _q(limit="1000", after_id=after), headers)
+        data = body.get("data") if isinstance(body.get("data"), list) else []
+        for e in data:
+            if not isinstance(e, dict):
+                continue
+            t = e.get("type")
+            r = e.get("request") if isinstance(e.get("request"), dict) else {}
+            if t == "control_request" and e.get("request_id") == rid and r.get("subtype") == "can_use_tool":
+                found = r
+            elif t == "control_response" and isinstance(e.get("response"), dict) and e["response"].get("request_id") == rid:
+                return None
+            elif t == "control_cancel_request" and e.get("request_id") == rid:
+                return None
+            if isinstance(e.get("uuid"), str):
+                after = e["uuid"]
+        if body.get("has_more") is not True or not data:
+            done = True
+            break
+    return found if done else None
+
+
+def _cloud_reply(ans, r):
+    """The control_response's inner `response` for allow / deny / choice, or None for a bad choice."""
+    base = {"toolUseID": r.get("tool_use_id"), "tool_name": r.get("tool_name")}
+    kind = ans["kind"]
+    if kind == "deny":
+        return {"behavior": "deny", "message": CLOUD_DENY_MESSAGE, **base}
+    inp = r.get("input") if isinstance(r.get("input"), dict) else {}
+    if kind == "allow":
+        return {"behavior": "allow", "updatedInput": inp, **base}
+    qs = inp.get("questions")
+    if r.get("tool_name") != "AskUserQuestion" or not isinstance(qs, list) or len(qs) != 1 or not isinstance(qs[0], dict):
+        return None
+    q = qs[0]
+    labels = [o.get("label") for o in (q.get("options") or []) if isinstance(o, dict)]
+    if q.get("multiSelect") is True or not isinstance(q.get("question"), str) or ans.get("label") not in labels:
+        return None
+    upd = dict(inp)
+    upd["answers"] = {q["question"]: ans["label"]}
+    return {"behavior": "allow", "updatedInput": upd, **base}
+
+
+def cloud_answer(req):
+    """Answer a cloud session's pending request, or send it a message, after re-checking it here."""
+    _set_budget(req)
+    sid, ans = req["sessionId"], req["answer"]
+    kind = ans["kind"]
+    secrets = set()
+
+    def fail(code, msg, e=None):
+        out = {"ok": False, "code": code, "error": _scrub(msg, secrets)[:200]}
+        if isinstance(e, urllib.error.HTTPError):
+            out["status"] = e.code
+            ra = _retry_after(e.headers.get("Retry-After") if e.headers else None)
+            if ra is not None:
+                out["retryAfterS"] = ra
+        return out
+
+    try:
+        headers, _ = _cloud_auth(expand(req["configDir"]), secrets)
+    except Exception as e:
+        return fail("auth", str(e) if isinstance(e, _CloudAuth) else f"{type(e).__name__}: {e}")
+    try:
+        try:
+            s = _cloud_get(f"/v1/sessions/{sid}" + _q(), headers)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return fail("gone", "the session no longer exists")
+            raise
+        status = s.get("session_status")
+        if status == "archived":
+            return fail("gone", "the session is archived")
+        if kind == "text":
+            if status == "requires_action":
+                return fail("not_pending", "the session is waiting on a question, not a message")
+            if status != "idle":
+                return fail("busy", "the session is working")
+            # Sent the way `claude -p "<msg>" --cloud <id>` sends it (KNOWN-ISSUES #39): the CLI's own route and
+            # wrapper, and the client-platform header, which the server records as the event's `client_platform`.
+            # Without that header the session shows the text as "Another Claude session sent a message" and treats
+            # it as a peer's request, not the user's.
+            event = {"type": "user", "uuid": str(uuid.uuid4()), "session_id": sid, "parent_tool_use_id": None,
+                     "message": {"role": "user", "content": ans["text"]}}
+            _cloud_post(f"/v1/code/sessions/{urllib.parse.quote(sid, safe='')}/events", headers,
+                        {"events": [{"payload": event}]}, {"anthropic-client-platform": CLOUD_CLIENT_PLATFORM})
+            return {"ok": True, "sent": kind}
+        else:
+            if status != "requires_action":
+                return fail("not_pending", "the session is not waiting on a question")
+            r = _cloud_find_request(headers, sid, ans.get("fromId"), ans["requestId"])
+            if r is None:
+                return fail("not_pending", "that request was already answered or cancelled")
+            reply = _cloud_reply(ans, r)
+            if reply is None:
+                return fail("bad_choice", "that answer is not one of the question's options")
+            payload = {"events": [{"type": "control_response", "response": {
+                "subtype": "success", "request_id": ans["requestId"], "response": reply}}]}
+        _cloud_post(f"/v1/sessions/{sid}/events" + _q(), headers, payload)
+        return {"ok": True, "sent": kind}
+    except Exception as e:  # report, never raise; never echo token values
+        msg = str(e) if isinstance(e, TimeoutError) else f"{type(e).__name__}: {e}"
+        return fail("http", msg, e)
 
 
 if __name__ == "__main__":

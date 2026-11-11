@@ -101,12 +101,19 @@ function actionText(s: Session, now: number, usage?: AccountUsage): string {
  */
 function card(s: Session, b: BoardState, now: number): string {
   const offline = s.hostOnline ? '' : `<div class="tag">offline · ${formatAge(now - s.lastSeen)} ago</div>`;
-  return `<div class="gcard st-${s.state}${s.hostOnline ? '' : ' offline'}" data-key="${esc(s.key)}">
+  const origin = s.cloud ? originText(s) : '';
+  return `<div class="gcard st-${s.state}${s.hostOnline ? '' : ' offline'}${s.cloud ? ' cloud' : ''}" data-key="${esc(s.key)}">
     <div class="char" data-state="${s.state}" data-key="${esc(s.key)}"><div class="ph"><i></i><i></i></div></div>
-    <div class="gbody">${nameHtml(s)}
+    <div class="gbody">${nameHtml(s)}${origin ? `<div class="meta">${esc(origin)}</div>` : ''}
       <div class="gstate"><span class="word">${word(s)}</span><span class="gctx">${s.contextPct === undefined ? '–' : `${s.contextPct}%`}</span></div>
       ${actionHtml(s, actionText(s, now, b.usage.find((u) => u.account === s.account)))}${offline}${rowActionsHtml(s)}</div>
   </div>`;
+}
+
+/** Where a cloud session was started: "from this PC (fix-login)", "from gs", "from claude.ai"; '' when not known. */
+export function originText(s: Pick<Session, 'origin' | 'originTask'>): string {
+  if (!s.origin) return '';
+  return `from ${s.origin}${s.originTask ? ` (${s.originTask})` : ''}`;
 }
 
 /** A row's or card's name. A board nickname (Task 41) carries the session's own name as its tooltip. Long-press or right-click opens the rename sheet (rename.ts). */
@@ -115,13 +122,13 @@ const nameHtml = (s: Session) => `<div class="name"${s.derivedName === undefined
 function row(s: Session, b: BoardState, now: number): string {
   const acct = b.accounts.find((a) => a.id === s.account);
   const win = s.tmux ? s.tmux.split(':')[0] : '';
-  const meta = [acct?.label ?? s.account, s.host, win].filter(Boolean).join(' · ');
+  const meta = (s.cloud ? [acct?.label ?? s.account, 'cloud', originText(s), s.repo] : [acct?.label ?? s.account, s.host, win]).filter(Boolean).join(' · ');
   // The tag sits on its own (wrapping) line: inside the one-line, ellipsised .meta it got clipped at tablet widths.
   const offline = s.hostOnline ? '' : `<div class="tag">host offline · last seen ${formatAge(now - s.lastSeen)} ago</div>`;
   // The row's Open button gets its own cell, under the status word, never inside it (spec §5.1). Answering is the
   // question bubble itself (Task 36).
   const acts = rowActionsHtml(s);
-  return `<div class="row st-${s.state}${s.hostOnline ? '' : ' offline'}" data-key="${esc(s.key)}">
+  return `<div class="row st-${s.state}${s.hostOnline ? '' : ' offline'}${s.cloud ? ' cloud' : ''}" data-key="${esc(s.key)}">
     <div class="char" data-state="${s.state}" data-key="${esc(s.key)}"><div class="ph"><i></i><i></i></div></div>
     <div class="who">${nameHtml(s)}<div class="meta">${esc(meta)}</div>${offline}</div>
     ${actionHtml(s, actionText(s, now, b.usage.find((u) => u.account === s.account)))}

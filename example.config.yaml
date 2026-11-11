@@ -20,6 +20,7 @@ hosts:
     repoRoots: [~/code]       # the launcher offers git repos up to two levels below these
     # Under WSL a Windows folder works too, more slowly: repoRoots: [~/code, /mnt/c/Users/<you>/source/repos]
     # claudeBin: claude       # the claude CLI to run for "+ New" (a name on PATH, or a path)
+    # cloudLaunchLog: ~/private/cloud/sessions.tsv  # cloud-build's launch log: cloud cards show "from <this host>"
   - id: build-box
     ssh: build-box            # an ssh config alias (or user@host): keys, jump hosts and ports stay in ~/.ssh/config
     tmuxSession: agents

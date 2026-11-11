@@ -39,6 +39,16 @@ accounts: [{id: w, label: W, colour: "#fff", host: nope, configDir: ~/.c}]
     expect(Object.keys(parseConfig(minimal).tablet)).not.toContain('screenTimeoutMs');
     expect(parseConfig(minimal + 'tablet: {adb: adb, screenTimeoutMs: 60000}\n').tablet.adb).toBe('adb');
   });
+  it('host cloudLaunchLog accepts ~/ and absolute paths, rejects relative ones', () => {
+    const cfg = (p: string) => parseConfig(`
+hosts: [{id: local, cloudLaunchLog: "${p}"}]
+accounts: [{id: w, label: W, colour: "#fff", host: local, configDir: ~/.c}]
+`, '/home/u');
+    expect(cfg('~/private/cloud/sessions.tsv').hosts[0].cloudLaunchLog).toBe('~/private/cloud/sessions.tsv');
+    expect(cfg('/var/log/launches.tsv').hosts[0].cloudLaunchLog).toBe('/var/log/launches.tsv');
+    expect(() => cfg('private/sessions.tsv')).toThrow();
+    expect(parseConfig(minimal).hosts[0].cloudLaunchLog).toBeUndefined();
+  });
   it('parses durations', () => {
     expect(parseDuration('90s')).toBe(90_000);
     expect(parseDuration('45m')).toBe(2_700_000);

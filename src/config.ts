@@ -45,6 +45,8 @@ const Host = z.object({
   /** Same rule as a registry tmux ref's session part (src/actions/validate.ts), so a launched session can be answered and attached. */
   tmuxSession: z.string().regex(TMUX_SESSION_RE, 'tmuxSession may use letters, digits, space, _ and -').default('clayclaude'),
   repoRoots: z.array(z.string()).default(['~/code']),
+  /** cloud-build's launch log on this host: cloud cards it lists show "from <this host>" (src/cloud/poller.ts). */
+  cloudLaunchLog: HostPath.optional(),
 });
 
 const Open = z.discriminatedUnion('type', [
