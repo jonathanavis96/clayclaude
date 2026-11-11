@@ -11,8 +11,14 @@ export interface CloudRequest {
   toolName: string;
   displayName?: string;
   toolUseId?: string;
-  /** The tool input, every string clipped to 400 characters. */
+  /**
+   * The tool input: whole when it is at most 8 000 characters as JSON (probe.py CLOUD_INPUT_MAX), else every string
+   * clipped to 400 characters and `truncated` set.
+   */
   input: unknown;
+  /** The host's sha256 of the whole input (canonical JSON); absent when truncated. An allow sends it back. */
+  inputHash?: string;
+  truncated?: true;
   createdAt: string;
 }
 
@@ -63,7 +69,8 @@ export interface ProbeCloud {
   accounts: CloudAccount[];
 }
 
-export type CloudAnswerCode = 'gone' | 'not_pending' | 'busy' | 'bad_choice' | 'http' | 'auth';
+/** `changed`: an allow's inputHash is not the hash of the input the host re-read, so nothing was sent. */
+export type CloudAnswerCode = 'gone' | 'not_pending' | 'busy' | 'bad_choice' | 'changed' | 'http' | 'auth';
 
 export type CloudAnswerReply =
   | { ok: true; sent: string }

@@ -17,6 +17,8 @@ const PENDING = raw('ask-pending.raw.json');
 const REQ_ID = 'fb19b28a-0f4d-4870-a322-09bc2c25a699';
 const PREV_ID = '4758f8cd-8624-4e3e-a325-a111c9c53f84';
 
+const HASH = 'a'.repeat(64);
+
 const cfg = parseConfig(`
 browsers: { chrome: /c/chrome.exe }
 hosts: [{id: local}, {id: gs, ssh: gs}]
@@ -28,7 +30,7 @@ const lit = (o: Partial<CloudRaw> = {}): CloudRaw => ({
   id: 'session_01FixtureDone', title: 'Done', status: 'idle', unread: true, createdAt: '2026-11-11T08:00:00Z', updatedAt: '2026-11-11T09:00:00Z', ...o,
 });
 const req = (o: Partial<CloudRequest> = {}): CloudRequest => ({
-  requestId: 'r1', eventId: 'e1', prevId: 'e0', toolName: 'Bash', input: { command: 'date' }, createdAt: '2026-11-11T09:00:00Z', ...o,
+  requestId: 'r1', eventId: 'e1', prevId: 'e0', toolName: 'Bash', input: { command: 'date' }, inputHash: HASH, createdAt: '2026-11-11T09:00:00Z', ...o,
 });
 const ev = (o: object = {}) => ({ lines: [], requests: [], resolved: [], lastId: 'e1', more: false, ...o });
 const ask = (questions: object[]) => lit({ id: 'session_01Ask', status: 'requires_action', events: ev({ requests: [req({ toolName: 'AskUserQuestion', input: { questions } })] }) });
@@ -73,8 +75,54 @@ describe('cloud actions', () => {
     const v = view(cloudPrompt(r.S(raw.id), r.entries.get(raw.id)!, []));
     expect(v.kind).toBe('permission');
     expect(v.options).toEqual(PERMISSION_OPTIONS);
-    expect(v.detail.startsWith('Bash: ')).toBe(true);
-    expect(v.detail).toBe('Bash: date');
+    expect(v.detail).toBe('Bash\ncommand: date');
+  });
+
+  it('permission detail shows the whole input: a long Bash command and a Write\'s content', () => {
+    const cmd = 'echo ' + 'x'.repeat(590) + ' && rm -rf ./build';
+    expect(cmd.length).toBeGreaterThan(600);
+    const content = 'line one\n' + 'y'.repeat(700) + '\nlast line';
+    for (const [input, want] of [
+      [{ command: cmd, description: 'Clean the build' }, [cmd, 'description: Clean the build']],
+      [{ file_path: '/w/a.txt', content }, ['file_path: /w/a.txt', 'line one', 'y'.repeat(700), 'last line']],
+    ] as const) {
+      const raw = lit({ status: 'requires_action', events: ev({ requests: [req({ toolName: 'file_path' in input ? 'Write' : 'Bash', input })] }) });
+      const r = rig([raw]);
+      const v = view(cloudPrompt(r.S(raw.id), r.entries.get(raw.id)!, []));
+      for (const w of want) expect(v.detail).toContain(w);
+      expect(v.options).toEqual(PERMISSION_OPTIONS);
+      expect(v.cut).toBeUndefined();
+    }
+  });
+
+  it('a cut input (clipped by the host, too long, or no input hash) offers No only, and Yes is refused', async () => {
+    const cases: Partial<CloudRequest>[] = [
+      { input: { command: 'x'.repeat(400) }, truncated: true, inputHash: undefined },
+      { input: { content: 'z'.repeat(11_000) } },   // over CLOUD_DETAIL_MAX even with a hash (an older or misbehaving host)
+      { inputHash: undefined },
+    ];
+    for (const o of cases) {
+      const raw = lit({ status: 'requires_action', events: ev({ requests: [req(o)] }) });
+      const r = rig([raw]);
+      const v = view(cloudPrompt(r.S(raw.id), r.entries.get(raw.id)!, []));
+      expect(v.kind).toBe('permission');
+      expect(v.cut).toBe(true);
+      expect(v.options.map((x) => x.key)).toEqual(['no']);
+      const svc = createActionService({ cfg, sessions: () => r.sessions, probe: r.d.probe, cloud: r.d.cloud, gui: async () => ({ ok: true }),
+        env: { kind: 'wsl', distro: 'Ubuntu' }, exec: async () => ({ code: 0, stdout: '', stderr: '' }) });
+      expect(await svc.answer({ sessionId: r.S(raw.id).key, promptHash: v.hash, choice: 'yes' })).toMatchObject({ ok: false, error: 'bad_request' });
+      expect(r.calls).toHaveLength(0);
+      expect(await svc.answer({ sessionId: r.S(raw.id).key, promptHash: v.hash, choice: 'no' })).toEqual({ ok: true, sent: 'No' });
+      expect(r.calls[0].req.answer).toEqual({ kind: 'deny', requestId: 'r1', fromId: 'e0' });
+    }
+  });
+
+  it('a host refusal because the input changed is prompt_changed', async () => {
+    const raw = lit({ status: 'requires_action', events: ev({ requests: [req()] }) });
+    const r = rig([raw], { probe: async () => ({ ok: false, code: 'changed', error: 'the request is not the one shown' }) });
+    const hash = view(cloudPrompt(r.S(raw.id), r.entries.get(raw.id)!, [])).hash;
+    expect(await cloudAnswer(r.d, r.S(raw.id), { sessionId: 'x', promptHash: hash, choice: 'yes' })).toMatchObject({ ok: false, error: 'prompt_changed' });
+    expect(r.calls).toHaveLength(1);
   });
 
   it('a finished turn takes a typed reply; a working session has no prompt; an unread question is poked', () => {
@@ -103,7 +151,8 @@ describe('cloud actions', () => {
       const r = rig([raw]);
       const hash = view(cloudPrompt(r.S(raw.id), r.entries.get(raw.id)!, [])).hash;
       expect(await cloudAnswer(r.d, r.S(raw.id), { sessionId: 'x', promptHash: hash, choice })).toEqual({ ok: true, sent });
-      expect(r.calls[0].req.answer).toEqual({ kind, requestId: 'r1', fromId: 'e0' });
+      // An allow carries the host's hash of the input shown, so the host refuses it if the input is not that one.
+      expect(r.calls[0].req.answer).toEqual(kind === 'allow' ? { kind, requestId: 'r1', fromId: 'e0', inputHash: HASH } : { kind, requestId: 'r1', fromId: 'e0' });
     }
     const r = rig([raw]);
     const hash = view(cloudPrompt(r.S(raw.id), r.entries.get(raw.id)!, [])).hash;

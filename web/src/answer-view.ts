@@ -41,9 +41,10 @@ function readyHtml(p: PromptView, c: { question?: string; lastAssistantText?: st
       <p class="ask">${esc(permissionHeading(c.question))}</p>
       <pre class="detail verbatim">${screenText(p.detail)}</pre>
       <div class="choices perm${yes ? '' : ' one'}">${p.options.map((o) => `<button class="choice" data-act="choose" data-key="${esc(o.key)}"><span>${esc(o.label)}</span></button>`).join('')}</div>
-      <p class="muted pc-note">${session.cloud ? 'Other choices are on claude.ai.' : yes ? 'Other choices, such as "don\'t ask again", are on the PC.'
+      <p class="${p.cut ? 'warn' : 'muted'} pc-note">${p.cut ? 'Yes is not offered here: this request is too long to show in full, and you would be approving what you cannot see. Read and approve it on claude.ai.'
+        : session.cloud ? 'Other choices are on claude.ai.' : yes ? 'Other choices, such as "don\'t ask again", are on the PC.'
         : 'Yes is not offered here: Claude\'s first option is not a plain "Yes" (approving a plan this way also changes the session\'s permission mode). Approve it on the PC.'}</p>
-      <div class="row-btns">${pcButtons(session)}</div>`;
+      <div class="row-btns">${p.cut ? '<button data-act="open-pc">Open on claude.ai to approve</button>' : pcButtons(session)}</div>`;
   }
   const ask = p.kind === 'menu' ? `<p class="ask">${screenText(p.title || c.question || 'Choose an option')}</p>` : `<p class="ask">${screenText(c.question || 'Reply to the session')}</p>`;
   if (p.kind === 'menu') {

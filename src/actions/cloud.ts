@@ -5,12 +5,12 @@ import type { AccountConfig, Config } from '../config.js';
 import type { Session } from '../types.js';
 import type { CloudPoller } from '../cloud/poller.js';
 import { pendingRequest, type CloudEntry } from '../cloud/reduce.js';
-import type { CloudAnswerReply } from '../cloud/types.js';
-import { extractTranscript, summariseInput } from '../core/transcript.js';
+import type { CloudAnswerReply, CloudRequest } from '../cloud/types.js';
+import { extractTranscript } from '../core/transcript.js';
 import { cleanText, type SendGuard } from './answer.js';
 import { promptHash } from './hash.js';
 import { chromeCmd, claudeUrl, openerPrefix, type Cmd } from './open.js';
-import { PERMISSION_OPTIONS } from './pane.js';
+import { PERMISSION_NO_ONLY, PERMISSION_OPTIONS } from './pane.js';
 import type { PlatformEnv } from './platform.js';
 import type { ProbeFn } from './launch.js';
 import { fail, type AnswerRequest, type Fail, type MessageRequest, type PromptView, type Result } from './types.js';
@@ -20,12 +20,31 @@ export interface CloudDeps { cfg: Config; cloud: Pick<CloudPoller, 'entry' | 'ac
 
 /** What cloud-answer is asked to send. */
 type CloudAnswer =
-  | { kind: 'allow' | 'deny'; requestId: string; fromId: string | null }
+  | { kind: 'allow'; requestId: string; fromId: string | null; inputHash: string }
+  | { kind: 'deny'; requestId: string; fromId: string | null }
   | { kind: 'choice'; requestId: string; fromId: string | null; label: string }
   | { kind: 'text'; text: string };
 
 const ANSWER_BUDGET_MS = 12_000;
 const UNSUPPORTED_ASK = 'This question has several parts or lets you pick more than one. Answer it on claude.ai.';
+/** The longest permission detail shown; the probe sends inputs up to the same size (CLOUD_INPUT_MAX), plus labels. */
+export const CLOUD_DETAIL_MAX = 10_000;
+
+/**
+ * A tool input as the person reads it: the tool's name, then every field, each value whole. A one-line string
+ * is `key: value`; a multi-line one is `key:` then its lines; anything else is indented JSON. Pure.
+ */
+export function inputDetail(name: string, input: unknown): string {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return `${name}\n${JSON.stringify(input ?? null, null, 2)}`;
+  const rows = Object.entries(input as Record<string, unknown>).map(([k, v]) => {
+    const text = typeof v === 'string' ? v : JSON.stringify(v, null, 2) ?? String(v);
+    return text.includes('\n') ? `${k}:\n${text}` : `${k}: ${text}`;
+  });
+  return [name, ...rows].join('\n');
+}
+
+/** The request's input cannot be shown whole, so it cannot be approved here. */
+const isCut = (p: CloudRequest, detail: string) => p.truncated === true || typeof p.inputHash !== 'string' || detail.length > CLOUD_DETAIL_MAX;
 
 /** The prompt the answer sheet shows for a cloud session. Pure. */
 export function cloudPrompt(s: Session, e: CloudEntry, quickReplies: string[]): PromptView | Fail {
@@ -44,9 +63,13 @@ export function cloudPrompt(s: Session, e: CloudEntry, quickReplies: string[]): 
       }) };
   }
   if (p) {
-    const what = summariseInput(p.toolName, p.input) || JSON.stringify(p.input ?? null).slice(0, 800);
-    const detail = `${p.displayName ?? p.toolName}: ${what}`;
-    return { kind: 'permission', title: '', detail, options: [...PERMISSION_OPTIONS], quickReplies: [], hash: promptHash(['cloud', p.requestId, p.toolName, detail]) };
+    // Everything Yes approves is shown (the host sends back the input it re-reads, checked against inputHash); what
+    // cannot be shown whole is approved on claude.ai, never here.
+    const full = inputDetail(p.displayName ?? p.toolName, p.input);
+    const cut = isCut(p, full);
+    const detail = cut ? full.slice(0, CLOUD_DETAIL_MAX) : full;
+    return { kind: 'permission', title: '', detail, options: (cut ? PERMISSION_NO_ONLY : PERMISSION_OPTIONS).map((o) => ({ ...o })), quickReplies: [],
+      hash: promptHash(['cloud', p.requestId, p.toolName, p.inputHash ?? '', cut ? 'cut' : 'whole', detail]), ...(cut ? { cut: true as const } : {}) };
   }
   if (e.raw.status === 'idle')
     return { kind: 'text', title: '', detail: '', options: [], quickReplies, hash: promptHash(['cloud-text', s.sessionId, String(s.stateSince)]) };
@@ -94,7 +117,13 @@ export async function cloudAnswer(d: CloudDeps, s: Session, req: AnswerRequest):
       return fail('prompt_changed', 'The prompt changed. Nothing was sent.');
     } else if (v.kind === 'permission') {
       if (req.choice !== 'yes' && req.choice !== 'no') return fail('bad_request', 'answer Yes or No');
-      answer = { kind: req.choice === 'yes' ? 'allow' : 'deny', requestId: p.requestId, fromId: p.prevId };
+      const inputHash = p.inputHash;
+      if (req.choice === 'yes') {
+        // Refused here as well as left off the sheet: a cut input is approved only on claude.ai.
+        if (v.cut || !v.options.some((o) => o.key === 'yes') || typeof inputHash !== 'string')
+          return fail('bad_request', 'This request is too long to show here in full. Approve it on claude.ai.');
+        answer = { kind: 'allow', requestId: p.requestId, fromId: p.prevId, inputHash };
+      } else answer = { kind: 'deny', requestId: p.requestId, fromId: p.prevId };
       sent = req.choice === 'yes' ? 'Yes' : 'No';
     } else {
       const o = v.options.find((x) => x.key === req.choice);
@@ -159,6 +188,7 @@ async function send(d: CloudDeps, s: Session, answer: CloudAnswer): Promise<Resu
     if (code === 'auth') { authError ??= why; continue; }
     d.cloud.poke(s.sessionId);
     if (code === 'gone') return fail('prompt_changed', text ? 'That session was archived. Nothing was sent.' : 'That question was already answered or cancelled. Nothing was sent.');
+    if (code === 'changed') return fail('prompt_changed', 'The request changed since it was shown. Nothing was sent.');
     if (code === 'not_pending') return fail('prompt_changed', text ? 'The session is now waiting on a question. Nothing was sent.' : 'That question was already answered or cancelled. Nothing was sent.');
     if (code === 'busy') return fail('no_prompt', 'The session is working. Nothing was sent.');
     if (code === 'bad_choice') return fail('bad_request', why);

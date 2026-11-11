@@ -628,6 +628,8 @@ def check_request(req):
                 bad_request("answer.fromId must be a string or null")
             if ans["kind"] == "choice" and (not isinstance(ans.get("label"), str) or not 1 <= len(ans["label"]) <= 400):
                 bad_request("answer.label must be 1-400 characters")
+            if ans["kind"] == "allow" and (not isinstance(ans.get("inputHash"), str) or not INPUT_HASH.match(ans["inputHash"])):
+                bad_request("answer.inputHash must be 64 lowercase hex characters")
     elif req.get("mode") in ("usage", "models"):
         accts = req.get("accounts", [])
         if not isinstance(accts, list) or not all(isinstance(a, dict) for a in accts):
@@ -1415,6 +1417,12 @@ CLOUD_PAGES_MAX = 5          # list pages per poll at most (100 sessions each)
 CLOUD_EVENT_PAGES = 3        # event pages per session per poll (1000 events each)
 CLOUD_LINES = 60             # newest transcript lines kept per poll
 CLOUD_CLIP = 400
+# A can_use_tool request's input is sent whole when it is at most this many characters as compact JSON, so the board
+# can show the person everything they approve. 8 000 covers a long shell command, a plan or a modest file write, and
+# still reads on a tablet by scrolling; longer inputs (big Write/Edit bodies) are clipped, marked truncated, and can be
+# approved only on claude.ai.
+CLOUD_INPUT_MAX = 8000
+INPUT_HASH = re.compile(r"[0-9a-f]{64}\Z")
 CLOUD_SESSION_ID = re.compile(r"session_[A-Za-z0-9]+\Z")
 CLOUD_SESSION_TOKEN = re.compile(r"session_[A-Za-z0-9]+")
 CLOUD_REPO = re.compile(r"^https://github\.com/([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
@@ -1596,9 +1604,14 @@ def _cloud_events(headers, sid, after):
             elif t == "control_request":
                 r = e.get("request") if isinstance(e.get("request"), dict) else {}
                 if r.get("subtype") == "can_use_tool" and isinstance(e.get("request_id"), str):
+                    inp, h, cut = _request_input(r.get("input"))
                     q = {"requestId": e["request_id"][:200], "eventId": e.get("uuid"), "prevId": prev,
                          "toolName": r["tool_name"][:200] if isinstance(r.get("tool_name"), str) else "",
-                         "input": clip_obj(r.get("input"), CLOUD_CLIP), "createdAt": e.get("created_at")}
+                         "input": inp, "createdAt": e.get("created_at")}
+                    if h is not None:
+                        q["inputHash"] = h
+                    if cut:
+                        q["truncated"] = True
                     if isinstance(r.get("display_name"), str):
                         q["displayName"] = r["display_name"][:200]
                     if isinstance(r.get("tool_use_id"), str):
@@ -1627,6 +1640,29 @@ def _cloud_events(headers, sid, after):
     if last_result:
         out["lastResultAt"] = last_result
     return out
+
+
+def _input_hash(inp):
+    """sha256 of a request input as canonical JSON (sorted keys, compact, ASCII), or None when it cannot be encoded.
+    Computed here from the unclipped input both when the request is read and when an allow is sent."""
+    try:
+        text = json.dumps(inp, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    except (ValueError, TypeError, RecursionError):
+        return None
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _request_input(inp):
+    """(input, hash, truncated) for a can_use_tool request: the whole input and its hash when it fits CLOUD_INPUT_MAX
+    and MAX_DEPTH, else the input clipped as other cloud fields are, no hash, and truncated."""
+    try:
+        size = len(json.dumps(inp, separators=(",", ":"), ensure_ascii=False))
+    except (ValueError, TypeError, RecursionError):
+        size = None
+    h = _input_hash(inp)
+    if size is not None and size <= CLOUD_INPUT_MAX and h is not None and clip_obj(inp, CLOUD_INPUT_MAX) == inp:
+        return inp, h, False
+    return clip_obj(inp, CLOUD_CLIP), None, True
 
 
 def _launches(path):
@@ -1818,6 +1854,9 @@ def cloud_answer(req):
             r = _cloud_find_request(headers, sid, ans.get("fromId"), ans["requestId"])
             if r is None:
                 return fail("not_pending", "that request was already answered or cancelled")
+            # An allow sends the input read here, so it must be the input the board showed: the hash it was shown with.
+            if kind == "allow" and _input_hash(r.get("input")) != ans["inputHash"]:
+                return fail("changed", "the request on the host is not the one the board showed")
             reply = _cloud_reply(ans, r)
             if reply is None:
                 return fail("bad_choice", "that answer is not one of the question's options")
@@ -1827,7 +1866,10 @@ def cloud_answer(req):
         return {"ok": True, "sent": kind}
     except Exception as e:  # report, never raise; never echo token values
         msg = str(e) if isinstance(e, TimeoutError) else f"{type(e).__name__}: {e}"
-        return fail("http", msg, e)
+        # A 401/403 to a token that has not expired here (revoked, or signed out elsewhere): the board tries the
+        # login's next account, as it does for an expired one.
+        revoked = isinstance(e, urllib.error.HTTPError) and e.code in (401, 403)
+        return fail("auth" if revoked else "http", msg, e)
 
 
 if __name__ == "__main__":

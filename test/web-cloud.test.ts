@@ -73,6 +73,17 @@ describe('cloud sessions on the board', () => {
     expect(renderSheet({ phase: 'error', message: 'x' }, base, [], '')).toContain('data-act="attach-pc"');
   });
 
+  it('a cut cloud permission shows No only, says why, and points to claude.ai to approve', () => {
+    const perm = { kind: 'permission', hash: 'h', title: '', detail: 'Write\nfile_path: /w/a\ncontent: zzz', quickReplies: [], cut: true,
+      options: [{ key: 'no', label: 'No', selected: false }] } as any;
+    const p = renderSheet({ phase: 'ready', prompt: perm, context: {} }, cloud(), [], '');
+    expect(p).not.toContain('data-key="yes"');
+    expect(p).toContain('data-key="no"');
+    expect(p).toContain('too long to show in full');
+    expect(p).toContain('Open on claude.ai to approve');
+    expect(p).toContain('file_path: /w/a');
+  });
+
   it('a local session renders exactly as before', () => {
     renderBoard(root, state([base, { ...base, key: 'local:main:s2', sessionId: 's2', state: 'asleep', question: undefined }]), { meters: 'rings', layout: 'strips' }, { measure });
     const rows = [...root.querySelectorAll('.row')].map((r) => r.outerHTML.replace(/<div class="age">[^<]*<\/div>/, ''));

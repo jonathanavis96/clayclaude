@@ -6,6 +6,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PROBE, PYTHON } from './helpers/probe.js';
 import { startCloudStub, type CloudStub, type CloudStubOpts } from './helpers/stub-cloud.js';
+import { parseConfig, type HostConfig } from '../src/config.js';
+import { cloudAnswer, cloudPrompt, type CloudDeps } from '../src/actions/cloud.js';
+import { SendGuard } from '../src/actions/answer.js';
+import { cloudSession, mergeEntry } from '../src/cloud/reduce.js';
 
 const execFileP = promisify(execFile);
 const FIX = join(import.meta.dirname, 'fixtures/cloud');
@@ -40,6 +44,14 @@ async function cloud(url: string, account: object, extra: object = {}) {
 /** The ask session as the list shows it: one cloud session, so its events are read. */
 const askItem = (status = 'requires_action', updated = '2026-11-11T10:58:43.189113Z') => ({ ...LIST[1], id: ASK_ID, session_status: status, updated_at: updated });
 const rawEvents = (f: string) => fix(f).events;
+/** A can_use_tool control_request event for the ask session. */
+const toolReq = (rid: string, tool: string, input: unknown, uuid = `ev-${rid}`) => ({ type: 'control_request', uuid, request_id: rid,
+  created_at: '2026-11-11T10:58:40Z', request: { subtype: 'can_use_tool', tool_name: tool, input, tool_use_id: `toolu_${rid}` } });
+/** The requests the cloud mode reduces from `events`, read from a stub of its own that is closed after. */
+async function reduced(events: object[]): Promise<any[]> {
+  const s = await startCloudStub({ list: [askItem()], events: { [ASK_ID]: events } });
+  try { return (await cloud(s.url, {})).out.accounts[0].sessions[0].events.requests; } finally { await s.close(); }
+}
 
 describe('probe cloud', () => {
   it('lists live cloud sessions only', async () => {
@@ -83,6 +95,28 @@ describe('probe cloud', () => {
     expect(ev.requests).toHaveLength(1);
     expect(ev.requests[0]).toMatchObject({ requestId: RID, toolName: 'AskUserQuestion', eventId: '8185a837-a3d1-48b6-bf53-9ab2778b9d27', prevId: EVENTS[reqIdx - 1].uuid });
     expect(ev.requests[0].input.questions[0].question).toBe('Pick a colour for the test');
+  });
+
+  it('sends a request input whole with the host\'s hash of it; a long or deep one is clipped, marked truncated and has no hash', async () => {
+    const cmd = 'echo ' + 'x'.repeat(600) + ' && rm -rf ./build';
+    const content = 'line one\n' + 'y'.repeat(7000) + '\nlast';
+    let deep: any = 'bottom';
+    for (let i = 0; i < 70; i++) deep = [deep];
+    const [whole, write, long, nested] = await reduced([toolReq('r1', 'Bash', { command: cmd }), toolReq('r2', 'Write', { file_path: '/w/a', content }),
+      toolReq('r3', 'Write', { file_path: '/w/b', content: 'z'.repeat(9000) }), toolReq('r4', 'Bash', { command: 'x', extra: deep })]);
+    expect(whole.input).toEqual({ command: cmd });
+    expect(whole.inputHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(whole.truncated).toBeUndefined();
+    expect(write.input).toEqual({ file_path: '/w/a', content });
+    expect(write.inputHash).not.toBe(whole.inputHash);
+    for (const r of [long, nested]) {
+      expect(r.truncated).toBe(true);
+      expect(r.inputHash).toBeUndefined();
+    }
+    expect(long.input.content).toHaveLength(400);
+    // Key order does not change the hash: it is over canonical JSON.
+    const [same] = await reduced([toolReq('r5', 'Write', { content, file_path: '/w/a' })]);
+    expect(same.inputHash).toBe(write.inputHash);
   });
 
   it('drops a request answered in the same batch', async () => {
@@ -241,11 +275,69 @@ describe('probe cloud-answer', () => {
   });
 
   it('allow sends the input back unchanged', async () => {
-    const { out, posts } = await answer(pending(), { kind: 'allow', requestId: RID, fromId: PREV });
+    const [{ inputHash }] = await reduced(PENDING);
+    const { out, posts } = await answer(pending(), { kind: 'allow', requestId: RID, fromId: PREV, inputHash });
     expect(out).toEqual({ ok: true, sent: 'allow' });
     expect(posts[0].body.events[0].response.response).toEqual({
       behavior: 'allow', toolUseID: 'toolu_01HmG9CwHfKfHVb3ZxtKR2rP', tool_name: 'AskUserQuestion', updatedInput: REQ.request.input,
     });
+  });
+
+  it('allow with a hash that is not of the input on the host is refused and posts nothing; deny needs no hash', async () => {
+    const [{ inputHash }] = await reduced(PENDING);
+    let { out, posts } = await answer(pending(), { kind: 'allow', requestId: RID, fromId: PREV, inputHash: 'b'.repeat(64) });
+    expect(out).toMatchObject({ ok: false, code: 'changed' });
+    expect(posts).toHaveLength(0);
+    await stub!.close(); stub = undefined;
+    // The input on the host changed since it was shown: the shown hash no longer matches.
+    const edited = PENDING.map((e) => (e.request_id === RID ? { ...e, request: { ...e.request, input: { ...e.request.input, extra: 1 } } } : e));
+    ({ out, posts } = await answer(pending('requires_action', edited), { kind: 'allow', requestId: RID, fromId: PREV, inputHash }));
+    expect(out).toMatchObject({ ok: false, code: 'changed' });
+    expect(posts).toHaveLength(0);
+    await stub!.close(); stub = undefined;
+    ({ out, posts } = await answer(pending(), { kind: 'allow', requestId: RID, fromId: PREV, inputHash }));
+    expect(out).toEqual({ ok: true, sent: 'allow' });
+    expect(posts).toHaveLength(1);
+    await stub!.close(); stub = undefined;
+    ({ out, posts } = await answer(pending(), { kind: 'deny', requestId: RID, fromId: PREV, inputHash: 'b'.repeat(64) }));
+    expect(out).toEqual({ ok: true, sent: 'deny' });
+  });
+
+  it('a 401 or 403 from the API (a revoked token) is an auth error', async () => {
+    for (const status of [401, 403]) {
+      const { out, posts } = await answer({ ...pending(), status }, { kind: 'text', text: 'hi' });
+      expect(out).toMatchObject({ ok: false, code: 'auth', status });
+      expect(posts).toHaveLength(0);
+      await stub!.close(); stub = undefined;
+    }
+  });
+
+  it('a revoked token on the first account makes the board answer through the second', async () => {
+    const dead = await startCloudStub({ ...pending(), status: 401 });
+    const live = await startCloudStub({ ...pending(), list: [askItem()] });
+    try {
+      const cfg = parseConfig(`
+hosts: [{id: local}, {id: gs, ssh: gs}]
+accounts:
+  - {id: a, label: A, colour: "#fff", host: local, configDir: ${acct()}, open: {type: tmux}}
+  - {id: b, label: B, colour: "#fff", host: gs, configDir: ${acct()}, open: {type: tmux}}
+`);
+      const listed = (await cloud(live.url, {})).out.accounts[0].sessions[0];
+      const entry = mergeEntry(undefined, listed);
+      const s = cloudSession(entry, { account: 'a', host: 'local', hostOnline: true, lastSeen: 0 });
+      const used: string[] = [];
+      const d: CloudDeps = { cfg, guard: new SendGuard(() => 0),
+        cloud: { entry: () => entry, poke: () => {}, accountsFor: () => cfg.accounts },
+        probe: async (h: HostConfig, req: object) => { used.push(h.id); return (await probe(h.id === 'local' ? dead.url : live.url, req)).out; } };
+      const v = cloudPrompt(s, entry, []);
+      if ('ok' in v) throw new Error(v.message);
+      expect(await cloudAnswer(d, s, { sessionId: s.key, promptHash: v.hash, choice: '2' })).toEqual({ ok: true, sent: 'Blue' });
+      expect(used).toEqual(['local', 'gs']);
+      expect(dead.calls.filter((c) => c.method === 'POST')).toHaveLength(0);
+      expect(live.calls.filter((c) => c.method === 'POST')).toHaveLength(1);
+    } finally {
+      await dead.close(); await live.close();
+    }
   });
 
   it('deny sends behavior deny with a message', async () => {
@@ -313,6 +405,8 @@ describe('probe cloud-answer', () => {
       { ...base, answer: { kind: 'text', text: 'x'.repeat(4001) } },
       { ...base, answer: { kind: 'choice', requestId: RID, label: 'x'.repeat(401) } },
       { ...base, answer: { kind: 'allow' } },
+      { ...base, answer: { kind: 'allow', requestId: RID } },
+      { ...base, answer: { kind: 'allow', requestId: RID, inputHash: 'xyz' } },
       { ...base, answer: { kind: 'nope' } },
     ]) {
       const err: any = await execFileP(PYTHON, [PROBE, JSON.stringify(bad)]).catch((e) => e);
