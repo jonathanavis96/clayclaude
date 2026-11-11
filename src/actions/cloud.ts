@@ -30,15 +30,28 @@ const UNSUPPORTED_ASK = 'This question has several parts or lets you pick more t
 /** The longest permission detail shown; the probe sends inputs up to the same size (CLOUD_INPUT_MAX), plus labels. */
 export const CLOUD_DETAIL_MAX = 10_000;
 
+/** Fields that say what a tool will act on, shown first so they cannot be pushed out of sight. */
+const FIRST_KEYS = ['command', 'file_path', 'path', 'url', 'notebook_path'];
+/** Every continuation line of a multi-line value carries this prefix, so a value can never pass for another field. */
+export const CONT = '  │ ';
+const plainKey = (k: string): string => (/^[A-Za-z0-9_.-]+$/.test(k) ? k : JSON.stringify(k));
+
 /**
- * A tool input as the person reads it: the tool's name, then every field, each value whole. A one-line string
- * is `key: value`; a multi-line one is `key:` then its lines; anything else is indented JSON. Pure.
+ * A tool input as the person reads it: the tool's name, then every field, each value whole. The fields a tool acts on
+ * (FIRST_KEYS) come first. A one-line string is `key: value`; a multi-line value is `key:` then each of its lines
+ * behind CONT; anything else is indented JSON, also behind CONT. A key that is not a plain word is shown JSON-quoted.
+ * Pure.
  */
 export function inputDetail(name: string, input: unknown): string {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) return `${name}\n${JSON.stringify(input ?? null, null, 2)}`;
-  const rows = Object.entries(input as Record<string, unknown>).map(([k, v]) => {
+  const block = (text: string) => text.split(/\r\n|\r|\n/).map((l) => CONT + l).join('\n');
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return `${name}\n${block(JSON.stringify(input ?? null, null, 2))}`;
+  const entries = Object.entries(input as Record<string, unknown>);
+  const rank = (k: string) => { const i = FIRST_KEYS.indexOf(k); return i < 0 ? FIRST_KEYS.length : i; };
+  const ordered = entries.map((e, i) => ({ e, i })).sort((a, b) => rank(a.e[0]) - rank(b.e[0]) || a.i - b.i).map((x) => x.e);
+  const rows = ordered.map(([k, v]) => {
+    const key = plainKey(k);
     const text = typeof v === 'string' ? v : JSON.stringify(v, null, 2) ?? String(v);
-    return text.includes('\n') ? `${k}:\n${text}` : `${k}: ${text}`;
+    return typeof v === 'string' && !/[\r\n]/.test(text) ? `${key}: ${text}` : `${key}:\n${block(text)}`;
   });
   return [name, ...rows].join('\n');
 }
