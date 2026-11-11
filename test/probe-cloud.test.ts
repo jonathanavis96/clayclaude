@@ -452,3 +452,16 @@ describe('probeTimeoutFor', async () => {
     expect(probeTimeoutFor({ budgetMs: 'x' })).toBe(15_000);
   });
 });
+
+describe('probe cloud reads the longest-waiting session first', () => {
+  it('reads the session whose last read is oldest, even when it is listed last', async () => {
+    const mk = (x: string, upd: string) => ({ ...LIST[1], id: id(`Rot${x}`), session_status: 'running', updated_at: upd });
+    const busy1 = mk('A', '2026-11-11T12:00:09Z'), busy2 = mk('B', '2026-11-11T12:00:08Z'), waiting = mk('C', '2026-11-11T12:00:07Z');
+    const s = await serve({ list: [busy1, busy2, waiting], events: { [busy1.id]: PENDING, [busy2.id]: PENDING, [waiting.id]: PENDING }, eventsDelayMs: 2000 });
+    const known = { [busy1.id]: { updatedAt: '2026-11-11T12:00:05Z' }, [busy2.id]: { updatedAt: '2026-11-11T12:00:04Z' }, [waiting.id]: { updatedAt: '2026-11-11T11:00:00Z' } };
+    // Budget for one events read only (each read needs 8 s left).
+    const { out } = await probe(s.url, { mode: 'cloud', budgetMs: 9500, accounts: [{ key: 'main', configDir: acct(), known }] });
+    const read = out.accounts[0].sessions.filter((x: any) => x.events).map((x: any) => x.id);
+    expect(read).toEqual([waiting.id]);
+  }, 30_000);
+});

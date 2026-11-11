@@ -1739,8 +1739,13 @@ def cloud(req):
                 k = known.get(f["id"]) if isinstance(known.get(f["id"]), dict) else None
                 if k is None or k.get("updatedAt") != f["updatedAt"]:
                     after = k.get("afterId") if k and isinstance(k.get("afterId"), str) and k["afterId"] else None
-                    todo.append((f, after))
+                    seen = k.get("updatedAt") if k and isinstance(k.get("updatedAt"), str) else None
+                    todo.append((f, after, seen))
                 sessions.append(f)
+            # Longest-waiting first: never read before, then the oldest updatedAt the daemon last saw read. A session that
+            # keeps changing is read and moves to the back, so it cannot keep another one's read out of the budget.
+            todo.sort(key=lambda t: (t[2] is not None, t[2] or ""))
+            todo = [(f, after) for f, after, _ in todo]
             entry.update(ok=True, login=login, sessions=sessions)
             work.append({"entry": entry, "headers": headers, "secrets": secrets, "todo": todo})
         except Exception as e:  # report, never raise; never echo token values
