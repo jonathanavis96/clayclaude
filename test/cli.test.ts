@@ -77,6 +77,7 @@ describe('cli', () => {
       child.stdout.on('data', (b) => { out += b; if (out.includes('clayclaude on')) resolve(); });
       child.on('exit', () => reject(new Error('exited early: ' + out)));
     });
+    expect(out).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d clayclaude on http/m); // a log file says when
     expect((await fetch(`http://127.0.0.1:${port}/healthz`)).status).toBe(200);
     // Plan 2: the PC baker's routes are mounted (pc is true or false depending on this machine; either is an answer)
     expect(typeof (await (await fetch(`http://127.0.0.1:${port}/clay/status`)).json()).pc).toBe('boolean');

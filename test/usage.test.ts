@@ -38,6 +38,63 @@ describe('UsagePoller', () => {
     expect(p.isExhausted('me')).toBe(false);
   });
 
+  describe('a host that cannot be reached', () => {
+    const T0 = Date.parse('2026-10-12T10:00:00Z');
+    const MIN = 60_000;
+    const one = (usage: string) => parseConfig(`
+hosts: [{id: box, ssh: box}]
+accounts:
+  - {id: a, label: A, colour: "#fff", host: box, configDir: ~/.claude-a, usage: ${usage}}
+`);
+    const run = (usage: string, entry: (t: number) => object) => {
+      const s = { t: T0, down: false, logs: [] as string[] };
+      const p = new UsagePoller(one(usage), { now: () => s.t, log: (m) => s.logs.push(m), probe: async () => {
+        if (s.down) throw new Error('box: probe timed out');
+        return { ok: true, accounts: [{ key: 'a', configDir: '~/.claude-a', ok: true, five_hour: { utilization: 100, resets_at: new Date(T0 + 3600_000).toISOString() }, seven_day: win(5), ...entry(s.t) }] };
+      } });
+      return { s, p, at: async (min: number) => { s.t = T0 + min * MIN; await p.pollOnce(); return p.usage()[0]; } };
+    };
+    const log = '{provider: meter-log, log: ~/m.log}';
+    const ts = (t: number) => ({ ts: new Date(t).toISOString(), idle: false });
+
+    for (const [name, usage, entry] of [['oauth', '{provider: oauth}', () => ({})], ['meter-log', log, ts]] as const)
+      it(`${name}: keeps the last value through a short outage, then goes stale, then recovers`, async () => {
+        const { s, p, at } = run(usage, entry);
+        expect(await at(0)).toMatchObject({ fiveHour: 100, stale: false });
+        s.down = true;
+        expect(await at(1)).toMatchObject({ fiveHour: 100, stale: false });
+        expect(p.isExhausted('a')).toBe(true); // a blip does not make a capped account look free
+        expect(await at(4)).toMatchObject({ stale: false });
+        expect(await at(7)).toMatchObject({ fiveHour: 100, stale: true });
+        expect(s.logs.filter((l) => l.includes('probe timed out'))).toHaveLength(1);
+        s.down = false;
+        expect(await at(8)).toMatchObject({ stale: false });
+        expect(s.logs.filter((l) => l.includes('is back'))).toHaveLength(1);
+        s.down = true; // a new outage gets its own allowance
+        expect(await at(9)).toMatchObject({ stale: false });
+      });
+
+    it('meter-log: a held reading goes stale too once the host has been out of reach', async () => {
+      const { s, at } = run(log, () => ({ ts: new Date(T0 - 60 * MIN).toISOString(), idle: true,
+        five_hour: { utilization: 20, resets_at: new Date(T0 - MIN).toISOString() }, seven_day: { utilization: 5, resets_at: new Date(T0 + 86_400_000).toISOString() } }));
+      expect(await at(0)).toMatchObject({ stale: false });
+      s.down = true;
+      expect(await at(1)).toMatchObject({ stale: false });
+      expect(await at(7)).toMatchObject({ stale: true });
+    });
+
+    it('a never-read account is stale at once, and an answered failure still marks stale at once', async () => {
+      const first = run('{provider: oauth}', () => ({}));
+      first.s.down = true;
+      expect(await first.at(0)).toMatchObject({ stale: true, fiveHour: null });
+      const bad = run('{provider: oauth}', (t) => (t > T0 ? { ok: false, error: 'HTTPError: 401', status: 401 } : {}));
+      await bad.at(0);
+      expect(await bad.at(1)).toMatchObject({ stale: true });
+      bad.s.down = true; // an outage after a real failure does not make it look fresh
+      expect(await bad.at(2)).toMatchObject({ stale: true });
+    });
+  });
+
   it('gives the http provider a timeout signal', async () => {
     let signal: AbortSignal | undefined;
     const p = new UsagePoller(cfg, { probe: async () => ({ ok: true, accounts: [] }),
