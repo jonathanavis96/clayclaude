@@ -600,7 +600,7 @@ Check that `ssh <alias> python3 --version` works without a password prompt from 
 <details>
 <summary><b>A meter shows "stale"</b></summary>
 
-The provider failed or the token expired. With `refresh: false`, the token is refreshed only by the other program; run `claude` in that account once to log in again if both have given up.
+The provider failed, the token expired, or the account's host has been out of reach for more than five minutes. With `refresh: false`, the token is refreshed only by the other program; run `claude` in that account once to log in again if both have given up.
 
 </details>
 

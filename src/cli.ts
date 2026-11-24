@@ -27,6 +27,7 @@ import { probeTimeoutFor, runProbe } from './probe/run.js';
 import { killChildren } from './children.js';
 import { unsupportedPlatformWarning } from './actions/platform.js';
 import { buildReport } from './build-info.js';
+import { stampConsole } from './log-times.js';
 
 const [cmd, ...rest] = process.argv.slice(2);
 /** Startup errors are the user's to fix (a config typo, a port in use): one plain line, not a stack trace. */
@@ -37,6 +38,8 @@ if (cmd !== 'serve') {
   console.log(USAGE);
   process.exit(cmd ? 1 : 0);
 }
+// Written to a file or a pipe (the systemd unit's serve.log), each line carries its time; a terminal does not need it.
+if (!process.stdout.isTTY && !process.stderr.isTTY) stampConsole();
 const SERVE_USAGE = 'usage: clayclaude serve [--config <path>]';
 
 let configPath = join(homedir(), '.config/clayclaude/config.yaml');

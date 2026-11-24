@@ -38,6 +38,8 @@ export class UsagePoller extends EventEmitter {
   private asked = new Map<string, number>();
   /** Per-account staleness limit where it is not STALE_MS from the last poll (token and meter-log readings). */
   private staleAfter = new Map<string, number>();
+  /** Accounts whose host could not be reached, and since when: their last value stays fresh for STALE_MS of that. */
+  private unreachable = new Map<string, number>();
 
   constructor(private cfg: Config, opts: { probe?: ProbeFn; fetchFn?: typeof fetch; now?: () => number; log?: (msg: string) => void } = {}) {
     super();
@@ -51,7 +53,8 @@ export class UsagePoller extends EventEmitter {
   usage(): AccountUsage[] {
     const now = this.now();
     return [...this.state.values()].map((u) => ({ ...u,
-      stale: u.stale || u.updatedAt === null || now - u.updatedAt > (this.staleAfter.get(u.account) ?? STALE_MS) }));
+      stale: u.stale || u.updatedAt === null || now - u.updatedAt > (this.staleAfter.get(u.account) ?? STALE_MS)
+        || now - (this.unreachable.get(u.account) ?? now) > STALE_MS }));
   }
 
   isExhausted(id: string): boolean {
@@ -104,7 +107,7 @@ export class UsagePoller extends EventEmitter {
             else if (e?.status === 429) this.limited(a.id, e.error ?? '429', e.retryAfterS);
             else this.fail(a.id, e?.error ?? 'no entry in probe output');
           }
-        } catch (err) { accts.forEach((a) => this.fail(a.id, errText(err))); }
+        } catch (err) { accts.forEach((a) => this.unreached(a, errText(err))); }
       }),
       ...http.map(async (a) => {
         const u = a.usage as { url: string; key: string };
@@ -167,6 +170,7 @@ export class UsagePoller extends EventEmitter {
     // five_hour null with seven_day present is a plan with no five-hour limit: fine. Neither is a failed read.
     if (!five && !week) return this.fail(a.id, 'no five_hour or seven_day in the usage response');
     this.backoff.delete(a.id);
+    this.unreachable.delete(a.id);
     if (this.failing.delete(a.id)) this.log(`clayclaude: usage for ${a.id} is back`);
     const was = this.state.get(a.id);
     this.state.set(a.id, { ...blank(a), email: (typeof id?.email === 'string' ? id.email : null) ?? was?.email ?? null,
@@ -175,9 +179,22 @@ export class UsagePoller extends EventEmitter {
       fiveHourResetsAt: five?.resets_at ?? null, weeklyResetsAt: week?.resets_at ?? null,
       stale: false, updatedAt: this.now() });
   }
+  private logFailure(id: string, why: string) {
+    if (!this.failing.has(id)) { this.failing.add(id); this.log(`clayclaude: usage for ${id} failed: ${why}`); }
+  }
+  /**
+   * The host gave no answer (a timeout, a dropped ssh). That says nothing about the account, so its last value stays
+   * until it is too old or the host has been out of reach for STALE_MS, which also ends a held reading. A token account
+   * fails at once: it is asked every five minutes only, and its reading must not be shown again as a fresh one.
+   */
+  private unreached(a: AccountConfig, why: string) {
+    if (a.usage.provider === 'token') return this.fail(a.id, why);
+    this.logFailure(a.id, why);
+    if (!this.unreachable.has(a.id)) this.unreachable.set(a.id, this.now());
+  }
   private fail(id: string, why: string) {
     this.readings.delete(id); // a token account's last reading is not shown again as fresh after a failed call
-    if (!this.failing.has(id)) { this.failing.add(id); this.log(`clayclaude: usage for ${id} failed: ${why}`); }
+    this.logFailure(id, why);
     const u = this.state.get(id); if (u) this.state.set(id, { ...u, stale: true });
   }
 

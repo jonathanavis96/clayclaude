@@ -14,6 +14,12 @@ All notable changes to clayclaude are listed here. The format follows
 
 ### Fixed
 
+- **One dropped connection to a host marked all its meters stale at once.** The
+  last value now stays until the host has been out of reach for five minutes
+  (or the value is too old). An answered failure (an expired token, a 401) is
+  still stale at once.
+- **`serve.log` had no times.** When its output is not a terminal, `serve` puts
+  the local time before each line.
 - **A message typed to a cloud session reached it as "Another Claude session
   sent a message"**, so it treated the text as a peer's request and declined
   instructions. The probe now sends it the way `claude -p "<msg>" --cloud <id>`
